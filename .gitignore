@@ -7,6 +7,8 @@ frontend/out/
 
 # Build
 backend/dist/
+frontend/dist/
+.design-docs-extracted/
 
 # Env files
 .env

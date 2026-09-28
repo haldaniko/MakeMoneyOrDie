@@ -1,10 +1,40 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { CSSProperties } from 'react';
-import { Clock, Eye, FilePlus, Menu, RefreshCw, Save, Search, Trash2, Wand2, X } from 'lucide-react';
+import { ArrowUp, ChevronDown, DollarSign, FilePlus, Mail, Menu, Moon, MoreHorizontal, RefreshCw, Save, Search, Trash2, Wand2, X } from 'lucide-react';
 import { assetUrl, getPost, getPosts, request, subscribe } from './api';
 import type { AdminSettings, Article, Post } from './domain';
 
 const covers = ['/covers/cover1.png', '/covers/cover2.png', '/covers/cover3.png', '/covers/cover4.png'];
+const demoArticles: Article[] = [
+  'Art Basel brings fun back to the fair with the element of surprise',
+  'Money love structure more than motivation',
+  'Turn one useful skill into an offer people understand',
+  'The internet removed the receptionist',
+  'A practical map for building online income after work',
+  'How attention strategy compounds into better choices',
+  'Digital products that keep selling after your mood leaves',
+  'Behavioral economics for people with rent due',
+  'Side hustles that do not become another job',
+].map((title, index) => ({
+  id: `demo-${index}`,
+  slug: title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, ''),
+  title,
+  excerpt: 'Sharp essays on money, attention, and the uncomfortable math of making your own future.',
+  contentHtml: `<p>Sharp essays on money, attention, and the uncomfortable math of making your own future.</p>`,
+  status: 'published',
+  author: 'Andrew Nicklson',
+  tags: ['Make Money Online'],
+  seoTitle: null,
+  seoDescription: null,
+  coverImage: null,
+  source: 'legacy',
+  createdAt: new Date().toISOString(),
+  updatedAt: new Date().toISOString(),
+  cover: covers[index % covers.length],
+  category: 'Make Money Online',
+  readingTime: 17,
+  views: 2400 + index * 310,
+}));
 const weekdays = [
   { value: 1, label: 'Mon' },
   { value: 2, label: 'Tue' },
@@ -154,7 +184,7 @@ function Header() {
   return (
     <header className={`site-header${menuOpen ? ' menu-open' : ''}`}>
       <div className="shell header-inner">
-        <button className="brand" onClick={() => go('/')}>MakeMoneyOrDie</button>
+        <button className="brand" onClick={() => go('/')}>make money<span>or die</span></button>
         <button
           className="menu-toggle"
           type="button"
@@ -166,8 +196,9 @@ function Header() {
           {menuOpen ? <X size={22} /> : <Menu size={22} />}
         </button>
         <nav id="site-navigation" className="nav">
-          <button onClick={() => go('/articles')}>Articles</button>
-          <button onClick={() => go('/about')}>About</button>
+          <button className="icon-button" type="button" aria-label="Search" onClick={() => go('/articles')}><Search size={19} /></button>
+          <button className="icon-button" type="button" aria-label="Toggle dark mode"><Moon size={18} /></button>
+          <button className="pill-button" type="button" onClick={() => document.getElementById('subscribe')?.scrollIntoView({ behavior: 'smooth' })}>Subscribe</button>
         </nav>
       </div>
       {menuOpen && <button className="menu-backdrop" aria-label="Close navigation" onClick={() => setMenuOpen(false)} />}
@@ -175,10 +206,10 @@ function Header() {
   );
 }
 
-function ArticleCard({ article }: { article: Article }) {
+function ArticleCard({ article, image = false, className = '' }: { article: Article; image?: boolean; className?: string }) {
   return (
     <article
-      className="article-card"
+      className={`article-card${image ? ' with-image' : ''}${className ? ` ${className}` : ''}`}
       role="link"
       tabIndex={0}
       onClick={() => navigate(`/articles/${article.slug}`)}
@@ -189,18 +220,16 @@ function ArticleCard({ article }: { article: Article }) {
         }
       }}
     >
-      <span className="image-wrap">
-        <img className="cover" src={article.cover} alt="" />
-      </span>
+      {image && (
+        <span className="image-wrap" aria-hidden="true">
+          <span className="cover-placeholder" />
+        </span>
+      )}
       <div className="card-body">
-        <div className="tag-row">
-          <span>{article.category}</span>
-        </div>
         <h3>{article.title}</h3>
-        <p>{article.excerpt}</p>
         <footer className="card-meta">
-          <span><Clock size={14} /> {article.readingTime} min</span>
-          <span><Eye size={14} /> {article.views.toLocaleString()}</span>
+          <span className="tag-pill">{article.category}</span>
+          <span>{article.readingTime} Min</span>
         </footer>
       </div>
     </article>
@@ -238,7 +267,7 @@ function Newsletter() {
   return (
     <form className="newsletter-form" onSubmit={submit}>
       <div className="newsletter-input-row">
-        <input value={email} onChange={(event) => setEmail(event.target.value)} type="email" placeholder="you@example.com" required disabled={busy} />
+        <input value={email} onChange={(event) => setEmail(event.target.value)} type="email" placeholder="Enter your email" required disabled={busy} />
         <button disabled={busy}>{busy ? 'Subscribing...' : 'Subscribe'}</button>
       </div>
       {message && <p className={`newsletter-message ${message.includes('subscribed') ? 'success' : 'error'}`}>{message}</p>}
@@ -247,60 +276,91 @@ function Newsletter() {
 }
 
 function HomePage({ articles }: { articles: Article[] }) {
-  const featured = articles.slice(0, 6);
+  const displayArticles = articles.length ? articles : demoArticles;
+  const featured = displayArticles.slice(0, 3);
+  const catalog = displayArticles.slice(0, 9);
+  const categories = ['Make Money Online', 'Attention Strategy', 'Digital Products', 'Behavioral Economics', 'Side Hustles'];
 
   return (
     <>
-      <section className="hero">
-        <div className="shell hero-grid">
-          <div className="hero-copy">
-            <p className="hero-overline">Andrew Nicklson / MakeMoneyOrDie</p>
-            <h1>Build leverage before the rent reminder does it for you.</h1>
-            <p>
-              Sharp essays on money, attention, and the uncomfortable math of making your own
-              future. No fluff, no startup cosplay, just ideas that actually survive contact with
-              a calendar and a bank account.
-            </p>
-            <div className="cta-row">
-              <button className="btn primary" onClick={() => navigate('/articles')}>Enter The Archive</button>
+      <main className="home-page shell">
+        <section className="home-hero">
+          <h1>Build leverage before the rent reminder does it for you.</h1>
+          <div className="hero-layout">
+            <div className="hero-left">
+              <p className="hero-deck">
+                Sharp essays on money, attention, and the uncomfortable math of making your own
+                future. No fluff, no startup cosplay, just ideas that actually survive contact with
+                a calendar and a bank account.
+              </p>
+
+              <section className="author-snapshot" aria-labelledby="author-title">
+                <h2 id="author-title">about author</h2>
+                <div className="author-row">
+                  <img src="/avatars/ava.svg" alt="" />
+                  <div>
+                    <h3>Andrew Nickolson</h3>
+                    <p>Writer, operator, and systems thinker.</p>
+                    <h4>Specialization</h4>
+                    <p>Side hustles, online businesses, content systems, AI-assisted publishing, behavioral economics, and the small decisions that compound into financial options.</p>
+                  </div>
+                </div>
+                <div className="author-stats">
+                  <span><span className="mini-badge">ok</span> publisher of a month</span>
+                  <span><span className="mini-badge flag">15</span> 15 years in business</span>
+                </div>
+              </section>
             </div>
-            <div className="newsletter-block">
-              <p className="newsletter-kicker">Weekly money signal</p>
-              <Newsletter />
-            </div>
-            <div className="hero-tags">
-              <span>Side Hustles</span>
-              <span>Behavioral Economics</span>
-              <span>Digital Products</span>
-              <span>Attention Strategy</span>
+
+            <aside className="featured-week">
+              <h2>featured this week</h2>
+              {featured.map((article, index) => (
+                <ArticleCard key={article.id} article={article} image={index === 0} />
+              ))}
+            </aside>
+          </div>
+        </section>
+
+        <section id="subscribe" className="mid-feature">
+          <div className="feature-photo" aria-hidden="true">
+            <img src="/covers/cover2.png" alt="" />
+          </div>
+          <div className="subscribe-panel">
+            <p className="section-kicker"><span><MoreHorizontal size={18} /></span> stay updated</p>
+            <h2>Read what matters.</h2>
+            <Newsletter />
+            <p className="consent-copy">By subscribing, you agree to receive our weekly newsletter. You can unsubscribe at any time.</p>
+          </div>
+        </section>
+
+        <div className="ad-slot">place for ads</div>
+
+        <section className="article-section">
+          <div className="article-section-head">
+            <h2>200+ articles</h2>
+            <div className="category-tools">
+              <span>browse by category:</span>
+              <button className="tag-pill active" type="button">Popular Now</button>
             </div>
           </div>
-          <aside className="hero-panel">
-            <div className="hero-panel-top">
-              <span className="hero-panel-label">Issue of the week</span>
-              <h2>Money loves structure more than motivation.</h2>
-            </div>
-            <ul className="hero-points">
-              <li>Read what matters, not what looks impressive in a screenshot.</li>
-              <li>Turn skills into offers that people understand in ten seconds.</li>
-              <li>Build assets that keep working after your mood leaves the room.</li>
-            </ul>
-            <div className="hero-quote">
+          <div className="category-row">
+            {categories.map((category) => <button key={category} className="category-chip" type="button">{category}</button>)}
+          </div>
+          <div className="magazine-grid">
+            {catalog.map((article, index) => (
+              <ArticleCard key={article.id} article={article} image={[0, 4, 7].includes(index)} />
+            ))}
+          </div>
+          <div className="quote-row">
+            <img src="/avatars/ava.svg" alt="" />
+            <div>
+              <strong>Andrew Nickolson</strong>
               <p>"The internet did not create new opportunities. It removed the receptionist."</p>
             </div>
-          </aside>
-        </div>
-      </section>
-
-      <section className="section">
-        <div className="shell">
-          <div className="section-head">
-            <h2>Latest Stories</h2>
-            <button className="btn secondary" onClick={() => navigate('/articles')}>View All</button>
+            <button className="load-more" type="button" onClick={() => navigate('/articles')}>Load More <ChevronDown size={18} /></button>
           </div>
-          <ArticleGrid articles={featured} />
-        </div>
-      </section>
+        </section>
+      </main>
     </>
   );
 }
@@ -740,8 +800,30 @@ function Footer() {
   return (
     <footer className="site-footer">
       <div className="shell footer-inner">
-        <span>MakeMoneyOrDie</span>
-        <span>Sharp essays by Andrew Nicklson</span>
+        <form className="footer-signup">
+          <p><span><DollarSign size={18} /></span> your weekly money signal</p>
+          <label>
+            <span className="sr-only">Email</span>
+            <input type="email" placeholder="Enter your email" />
+          </label>
+          <button type="button">Subscribe</button>
+        </form>
+        <p className="footer-consent">By subscribing, you agree to receive our weekly newsletter.<br />You can unsubscribe at any time.</p>
+        <div className="footer-bottom">
+          <div className="footer-notes">
+            <span># sharp essays by Andrew Nickolson</span>
+            <span><Mail size={14} /> get in touch</span>
+            <span>© makemoney or die</span>
+          </div>
+          <nav className="footer-links" aria-label="Footer">
+            <a href="/terms">Terms of Use</a>
+            <a href="/privacy">Privacy Policy</a>
+            <a href="/cookies">Cookie Policy</a>
+          </nav>
+          <button className="back-top" type="button" aria-label="Back to top" onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}>
+            <ArrowUp size={22} />
+          </button>
+        </div>
       </div>
     </footer>
   );
@@ -780,8 +862,6 @@ export default function App() {
 
   return (
     <>
-      <div className="orb orb-left" />
-      <div className="orb orb-right" />
       <Header />
       {error && <div className="load-error">{error}</div>}
       {path === '/admin' ? <AdminPanel /> : path === '/about' ? <AboutPage /> : path === '/articles' ? <ArticlesPage articles={articles} initialQuery={initialSearch} /> : slug ? <ArticlePage article={article} /> : <HomePage articles={articles} />}
