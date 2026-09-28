@@ -184,7 +184,7 @@ function Header() {
   return (
     <header className={`site-header${menuOpen ? ' menu-open' : ''}`}>
       <div className="shell header-inner">
-        <button className="brand" onClick={() => go('/')}>make money<span>or die</span></button>
+        <button className="brand" onClick={() => go('/')}>make money<span>ordie</span></button>
         <button
           className="menu-toggle"
           type="button"

@@ -1343,7 +1343,10 @@ body {
 }
 
 .header-inner {
+  width: 100%;
   min-height: 72px;
+  padding: 0 64px 0 14px;
+  align-items: flex-end;
 }
 
 .brand {
@@ -1352,6 +1355,7 @@ body {
   font-size: 1.18rem;
   font-weight: 500;
   letter-spacing: 0;
+  line-height: 1;
   text-transform: lowercase;
 }
 
