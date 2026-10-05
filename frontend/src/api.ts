@@ -1,6 +1,6 @@
 import type { AdminSettings, Post } from './domain';
 
-export const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:4000';
+export const apiUrl = import.meta.env.VITE_API_URL || (import.meta.env.DEV ? 'http://localhost:4000' : '');
 export const assetUrl = (path?: string | null) => {
   if (!path) return '';
   if (/^https?:\/\//i.test(path)) return path;

@@ -28,7 +28,7 @@ services:
     environment:
       DJANGO_DEBUG: "0"
       DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:?Set DJANGO_SECRET_KEY in .env}
-      DJANGO_ALLOWED_HOSTS: ${DJANGO_ALLOWED_HOSTS:-api.makemoneyordie.com}
+      DJANGO_ALLOWED_HOSTS: ${DJANGO_ALLOWED_HOSTS:-makemoneyordie.com,www.makemoneyordie.com}
       CORS_ALLOWED_ORIGINS: https://makemoneyordie.com,https://www.makemoneyordie.com
       OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
       OPENROUTER_MODEL: ${OPENROUTER_MODEL:-meta-llama/llama-3.1-8b-instruct}
@@ -81,7 +81,7 @@ services:
       context: ./frontend
       target: prod
       args:
-        VITE_API_URL: https://api.makemoneyordie.com
+        VITE_API_URL: ""
     restart: unless-stopped
     ports:
       - "9005:3000"
