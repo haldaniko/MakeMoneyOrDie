@@ -2,39 +2,33 @@
 
 Publishing site with a React frontend, Django REST Framework backend, PostgreSQL, and OpenRouter article generation.
 
-## Local development
+## Production deployment
+
+The production configuration is kept in one `docker-compose.yml`. Runtime settings such as the domains, ports, database name, CORS, and Vite API URL are fixed there. The root `.env` contains the database and Django secrets, allowed hosts, and optional OpenRouter defaults.
+
+```bash
+cp .env.sample .env
+```
+
+Set `POSTGRES_PASSWORD` to a strong database password and `DJANGO_SECRET_KEY` to a long random value. Keep both values stable across deployments. `DJANGO_SECRET_KEY` also encrypts the OpenRouter key stored in the database. Set `DJANGO_ALLOWED_HOSTS` to the API hostnames, separated by commas. OpenRouter settings can be supplied in `.env`; values saved in the admin take precedence. The API key can also be set in the admin, where it is encrypted in PostgreSQL.
+
+Start or update the site:
 
 ```bash
 docker compose up --build -d --remove-orphans
 ```
 
-- Site: http://localhost:3000
-- Frontend admin: http://localhost:3000/admin
-- API health: http://localhost:4000/api/health
+Nginx should proxy `makemoneyordie.com` to `127.0.0.1:9005` and `api.makemoneyordie.com` to `127.0.0.1:8018`; see `deploy/nginx/makemoneyordie.conf`.
 
-The backend runs Django migrations and imports data from the previous Node backend's tables on startup. It does not delete those tables or the existing PostgreSQL and uploads volumes. Repeating the import is safe.
+The backend runs Django migrations and imports data from the previous Node backend's tables on startup. The import does not delete the old tables. PostgreSQL and uploads use persistent Docker volumes. Back them up before upgrades, and do not run `docker compose down -v` if you want to keep the data.
 
-If no admin exists, create one with:
+Create an administrator if one does not already exist:
 
 ```bash
 docker compose exec backend python manage.py createsuperuser
 ```
 
-Sign in at `/admin` with the username or email and password. Existing admin accounts are imported and their bcrypt passwords are upgraded after login.
-
-Configure the OpenRouter API key, model, prompt, request limits, timezone, and automatic generation schedule in the frontend admin's **AI generation settings**. The API key is encrypted in PostgreSQL using `DJANGO_SECRET_KEY` and is never sent back to the browser. Keep that secret stable across deployments. Generated posts and uploaded cover images also live in persistent volumes.
-
-The separate `scheduler` service reads the same settings and triggers scheduled generation. Manual generation is available from the admin toolbar.
-
-## Production
-
-Copy `.env.production.example` to `.env.production`, set the database password, a long stable Django secret, allowed host, frontend origin, and public API URL, then run:
-
-```bash
-docker compose --env-file .env.production -f docker-compose.prod.yml up --build -d --remove-orphans
-```
-
-The frontend is exposed on port 9005, the API on port 8018. Set `CORS_ALLOWED_ORIGINS` to the public frontend origin (including `:9005`) and `VITE_API_URL` to the public API origin (including `:8018`) when accessing the containers directly. Replace the example domain in `.env.production` with your server's hostname. PostgreSQL stays internal. Back up the PostgreSQL and uploads volumes before upgrades. Do not use `docker compose down -v` if you want to retain data.
+Configure the OpenRouter key, model, prompt, request limits, timezone, and automatic generation schedule in the frontend admin's **AI generation settings**. The key is encrypted in PostgreSQL. The `scheduler` service reads those settings and triggers scheduled generation.
 
 ## API
 

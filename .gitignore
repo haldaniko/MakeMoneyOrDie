@@ -18,9 +18,6 @@ __pycache__/
 
 # Env files
 .env
-backend/.env
-frontend/.env
-.env.production
 
 # OS
 .DS_Store

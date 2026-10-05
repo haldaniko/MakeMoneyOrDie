@@ -1,35 +1,52 @@
+name: makemoneyordie
+
 services:
   postgres:
     image: postgres:16-alpine
+    restart: unless-stopped
     environment:
       POSTGRES_DB: makemoneyordie
       POSTGRES_USER: makemoneyordie
-      POSTGRES_PASSWORD: makemoneyordie
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
     volumes:
-      - makemoneyordie_postgres_data:/var/lib/postgresql/data
+      - makemoneyordie_prod_postgres_data:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U makemoneyordie -d makemoneyordie"]
-      interval: 5s
+      interval: 10s
       timeout: 5s
       retries: 20
 
   backend:
     build:
       context: ./backend
-      target: dev
+      target: prod
+    restart: unless-stopped
     ports:
-      - "4000:4000"
+      - "8018:4000"
     volumes:
-      - makemoneyordie_uploads:/app/uploads
+      - makemoneyordie_prod_uploads:/app/uploads
     environment:
-      DJANGO_DEBUG: "1"
-      DATABASE_URL: postgres://makemoneyordie:makemoneyordie@postgres:5432/makemoneyordie
-      CORS_ALLOWED_ORIGINS: http://localhost:3000,http://127.0.0.1:3000
+      DJANGO_DEBUG: "0"
+      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:?Set DJANGO_SECRET_KEY in .env}
+      DJANGO_ALLOWED_HOSTS: ${DJANGO_ALLOWED_HOSTS:-api.makemoneyordie.com}
+      CORS_ALLOWED_ORIGINS: https://makemoneyordie.com,https://www.makemoneyordie.com
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+      OPENROUTER_MODEL: ${OPENROUTER_MODEL:-meta-llama/llama-3.1-8b-instruct}
+      OPENROUTER_SITE_URL: ${OPENROUTER_SITE_URL:-https://makemoneyordie.com}
+      OPENROUTER_TIMEOUT_MS: ${OPENROUTER_TIMEOUT_MS:-90000}
+      OPENROUTER_MAX_INPUT_CHARS: ${OPENROUTER_MAX_INPUT_CHARS:-16000}
+      OPENROUTER_MAX_OUTPUT_TOKENS: ${OPENROUTER_MAX_OUTPUT_TOKENS:-9000}
+      OPENROUTER_TEMPERATURE: ${OPENROUTER_TEMPERATURE:-0.7}
+      OPENROUTER_RETRY_ATTEMPTS: ${OPENROUTER_RETRY_ATTEMPTS:-3}
+      PGHOST: postgres
+      PGDATABASE: makemoneyordie
+      PGUSER: makemoneyordie
+      PGPASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
     depends_on:
       postgres:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:4000/api/health', timeout=3)"]
+      test: ["CMD", "python", "-c", "import os, urllib.request; host=os.environ['DJANGO_ALLOWED_HOSTS'].split(',')[0]; urllib.request.urlopen(urllib.request.Request('http://localhost:4000/api/health', headers={'Host': host}), timeout=3)"]
       interval: 10s
       timeout: 5s
       retries: 20
@@ -37,11 +54,24 @@ services:
   scheduler:
     build:
       context: ./backend
-      target: dev
+      target: prod
+    restart: unless-stopped
     command: ["python", "manage.py", "run_generation_scheduler"]
     environment:
-      DJANGO_DEBUG: "1"
-      DATABASE_URL: postgres://makemoneyordie:makemoneyordie@postgres:5432/makemoneyordie
+      DJANGO_DEBUG: "0"
+      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:?Set DJANGO_SECRET_KEY in .env}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+      OPENROUTER_MODEL: ${OPENROUTER_MODEL:-meta-llama/llama-3.1-8b-instruct}
+      OPENROUTER_SITE_URL: ${OPENROUTER_SITE_URL:-https://makemoneyordie.com}
+      OPENROUTER_TIMEOUT_MS: ${OPENROUTER_TIMEOUT_MS:-90000}
+      OPENROUTER_MAX_INPUT_CHARS: ${OPENROUTER_MAX_INPUT_CHARS:-16000}
+      OPENROUTER_MAX_OUTPUT_TOKENS: ${OPENROUTER_MAX_OUTPUT_TOKENS:-9000}
+      OPENROUTER_TEMPERATURE: ${OPENROUTER_TEMPERATURE:-0.7}
+      OPENROUTER_RETRY_ATTEMPTS: ${OPENROUTER_RETRY_ATTEMPTS:-3}
+      PGHOST: postgres
+      PGDATABASE: makemoneyordie
+      PGUSER: makemoneyordie
+      PGPASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
     depends_on:
       backend:
         condition: service_healthy
@@ -49,15 +79,16 @@ services:
   frontend:
     build:
       context: ./frontend
-      target: dev
+      target: prod
+      args:
+        VITE_API_URL: https://api.makemoneyordie.com
+    restart: unless-stopped
     ports:
-      - "3000:3000"
-    environment:
-      VITE_API_URL: http://localhost:4000
+      - "9005:3000"
     depends_on:
       backend:
         condition: service_healthy
 
 volumes:
-  makemoneyordie_postgres_data:
-  makemoneyordie_uploads:
+  makemoneyordie_prod_postgres_data:
+  makemoneyordie_prod_uploads:

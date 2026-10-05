@@ -1,5 +1,6 @@
 import base64
 import hashlib
+import os
 import re
 from pathlib import Path
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
@@ -25,13 +26,13 @@ def defaults():
         "generationWeekdays": [1],
         "autoGenerationEnabled": False,
         "timezone": "Europe/Sofia",
-        "openRouterModel": "meta-llama/llama-3.1-8b-instruct",
-        "openRouterSiteUrl": "http://localhost:3000",
-        "openRouterTimeoutMs": 90000,
-        "openRouterMaxInputChars": 16000,
-        "openRouterMaxOutputTokens": 9000,
-        "openRouterTemperature": 0.7,
-        "openRouterRetryAttempts": 3,
+        "openRouterModel": os.getenv("OPENROUTER_MODEL", "meta-llama/llama-3.1-8b-instruct"),
+        "openRouterSiteUrl": os.getenv("OPENROUTER_SITE_URL", "https://makemoneyordie.com"),
+        "openRouterTimeoutMs": int(os.getenv("OPENROUTER_TIMEOUT_MS", "90000")),
+        "openRouterMaxInputChars": int(os.getenv("OPENROUTER_MAX_INPUT_CHARS", "16000")),
+        "openRouterMaxOutputTokens": int(os.getenv("OPENROUTER_MAX_OUTPUT_TOKENS", "9000")),
+        "openRouterTemperature": float(os.getenv("OPENROUTER_TEMPERATURE", "0.7")),
+        "openRouterRetryAttempts": int(os.getenv("OPENROUTER_RETRY_ATTEMPTS", "3")),
     }
 
 
@@ -42,7 +43,7 @@ def _cipher():
 
 def api_key_for(row):
     if not row.encrypted_api_key:
-        return ""
+        return os.getenv("OPENROUTER_API_KEY", "")
     try:
         return _cipher().decrypt(row.encrypted_api_key.encode()).decode()
     except InvalidToken as error:

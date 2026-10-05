@@ -2,7 +2,6 @@
   "name": "makemoneyordie",
   "private": true,
   "scripts": {
-    "dev:docker": "docker compose up --build -d --remove-orphans",
-    "prod:docker": "docker compose --env-file .env.production -f docker-compose.prod.yml up --build -d --remove-orphans"
+    "docker:up": "docker compose up --build -d --remove-orphans"
   }
 }
