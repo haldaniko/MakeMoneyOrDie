@@ -1991,7 +1991,7 @@ body {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 16px;
-  align-items: start;
+  align-items: stretch;
 }
 
 .magazine-column {
@@ -2002,7 +2002,14 @@ body {
 }
 
 .magazine-column .article-card {
+  display: flex;
+  flex: 0 0 auto;
+  flex-direction: column;
   animation: magazine-card-in 280ms ease-out both;
+}
+
+.magazine-column .article-card:last-child {
+  flex-grow: 1;
 }
 
 @keyframes magazine-card-in {
@@ -2019,6 +2026,7 @@ body {
 .magazine-column .card-body {
   display: flex;
   min-height: 166px;
+  flex-grow: 1;
   flex-direction: column;
   justify-content: space-between;
 }
