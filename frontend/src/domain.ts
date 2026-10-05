@@ -24,6 +24,17 @@ export type AdminSettings = {
   generationTimes: string[];
   generationWeekdays: number[];
   autoGenerationEnabled: boolean;
+  timezone: string;
+  openRouterModel: string;
+  openRouterSiteUrl: string;
+  openRouterTimeoutMs: number;
+  openRouterMaxInputChars: number;
+  openRouterMaxOutputTokens: number;
+  openRouterTemperature: number;
+  openRouterRetryAttempts: number;
+  openRouterApiKey: string;
+  hasOpenRouterApiKey: boolean;
+  clearOpenRouterApiKey?: boolean;
 };
 
 export type Article = Post & {

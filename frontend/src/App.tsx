@@ -1,10 +1,21 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { CSSProperties } from 'react';
-import { ArrowUp, ChevronDown, DollarSign, FilePlus, Mail, Menu, Moon, MoreHorizontal, RefreshCw, Save, Search, Trash2, Wand2, X } from 'lucide-react';
-import { assetUrl, getPost, getPosts, request, subscribe } from './api';
+import { ArrowUp, ChevronDown, FilePlus, Mail, Menu, Moon, RefreshCw, Save, Search, Trash2, Wand2, X } from 'lucide-react';
+import { assetUrl, getPost, getPosts, request, subscribe, unsubscribe } from './api';
 import type { AdminSettings, Article, Post } from './domain';
 
 const covers = ['/covers/cover1.png', '/covers/cover2.png', '/covers/cover3.png', '/covers/cover4.png'];
+const demoTags = [
+  ['Make Money Online'],
+  ['Behavioral Economics'],
+  ['Side Hustles', 'Make Money Online'],
+  ['Make Money Online'],
+  ['Make Money Online'],
+  ['Attention Strategy'],
+  ['Digital Products'],
+  ['Behavioral Economics'],
+  ['Side Hustles'],
+];
 const demoArticles: Article[] = [
   'Art Basel brings fun back to the fair with the element of surprise',
   'Money love structure more than motivation',
@@ -20,18 +31,20 @@ const demoArticles: Article[] = [
   slug: title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, ''),
   title,
   excerpt: 'Sharp essays on money, attention, and the uncomfortable math of making your own future.',
-  contentHtml: `<p>Sharp essays on money, attention, and the uncomfortable math of making your own future.</p>`,
+  contentHtml: index === 1
+    ? `<h2>Titles are very important for bulleting</h2><p>Money responds to repeatable choices more reliably than it responds to a burst of motivation. A useful plan starts with the bills that return every month, the work you can do consistently, and the time you can protect. When those pieces are visible, you can build small systems for earning, saving, and learning that still run on an ordinary Tuesday. The goal is to make progress possible even when your energy is limited and your attention is elsewhere. Put recurring tasks on a calendar, write down the numbers you need to watch, and decide in advance what you will do when a week does not go to plan.</p><p>Start with one habit you can measure and one offer you can improve. Keep the process simple enough to repeat after a long day. Review what actually happened each week, adjust the parts that create friction, and give the useful parts time to compound. Structure will not make every decision easy, but it can make the next good decision much easier to take. Over time, those small decisions create room for better work and more financial options. Keep a short record of outcomes so you can tell which routines actually help and which merely feel productive. That record gives you a better starting point every month.</p>`
+    : `<p>Sharp essays on money, attention, and the uncomfortable math of making your own future.</p>`,
   status: 'published',
-  author: 'Andrew Nicklson',
-  tags: ['Make Money Online'],
+  author: 'Andrew Nickolson',
+  tags: demoTags[index],
   seoTitle: null,
   seoDescription: null,
   coverImage: null,
   source: 'legacy',
-  createdAt: new Date().toISOString(),
+  createdAt: index === 1 ? '2025-08-12T12:00:00.000Z' : new Date().toISOString(),
   updatedAt: new Date().toISOString(),
-  cover: covers[index % covers.length],
-  category: 'Make Money Online',
+  cover: index === 1 ? '/design-assets/article-cover.png' : covers[index % covers.length],
+  category: demoTags[index][0],
   readingTime: 17,
   views: 2400 + index * 310,
 }));
@@ -44,6 +57,26 @@ const weekdays = [
   { value: 6, label: 'Sat' },
   { value: 0, label: 'Sun' },
 ];
+const categories = ['Make Money Online', 'Attention Strategy', 'Digital Products', 'Behavioral Economics', 'Side Hustles'] as const;
+type Category = (typeof categories)[number];
+const categoryTags: Record<Category, string[]> = {
+  'Make Money Online': ['make money online', 'online income', 'income', 'business', 'businesses', 'affiliate marketing', 'freelancing'],
+  'Attention Strategy': ['attention', 'attention strategy', 'attention economics', 'content strategy', 'marketing'],
+  'Digital Products': ['digital product', 'digital products', 'ecommerce', 'online courses', 'digital downloads'],
+  'Behavioral Economics': ['behavioral economics', 'behavioural economics', 'behavioral finance', 'psychology'],
+  'Side Hustles': ['side hustle', 'side hustles', 'gig work', 'freelancing'],
+};
+
+function isCategory(value: string | null): value is Category {
+  return categories.some((category) => category === value);
+}
+
+function matchesCategory(article: Article, category: Category) {
+  return [...article.tags, article.category].some((tag) => {
+    const normalized = tag.trim().toLowerCase().replace(/[-_]/g, ' ').replace(/\s+/g, ' ');
+    return categoryTags[category].some((alias) => normalized === alias || normalized.startsWith(`${alias} `) || normalized.endsWith(` ${alias}`));
+  });
+}
 const hourOptions = Array.from({ length: 24 }, (_, index) => String(index).padStart(2, '0'));
 const minuteOptions = Array.from({ length: 60 }, (_, index) => String(index).padStart(2, '0'));
 
@@ -53,6 +86,7 @@ type DraftPost = {
   excerpt: string;
   contentHtml: string;
   status: 'draft' | 'published';
+  category: string;
   tags: string;
   coverImage: string;
 };
@@ -64,7 +98,12 @@ type MediaAsset = {
   createdAt: string;
 };
 
-const emptyDraft: DraftPost = { title: '', slug: '', excerpt: '', contentHtml: '<h2>Introduction</h2><p></p>', status: 'published', tags: '', coverImage: '' };
+type SubscriberRecord = {
+  email: string;
+  createdAt: string;
+};
+
+const emptyDraft: DraftPost = { title: '', slug: '', excerpt: '', contentHtml: '<h2>Introduction</h2><p></p>', status: 'published', category: '', tags: '', coverImage: '' };
 
 function normalizeTimeValue(value: string) {
   const trimmed = String(value || '').trim();
@@ -98,6 +137,52 @@ function pickCover(seed: string) {
   return covers[hash % covers.length];
 }
 
+type MagazineItem = { article: Article; originalIndex: number; image: boolean };
+
+function seededIndex(seed: number, value: string, length: number) {
+  let hash = seed >>> 0;
+  for (let index = 0; index < value.length; index += 1) {
+    hash = Math.imul(hash ^ value.charCodeAt(index), 16777619);
+  }
+  return (hash >>> 0) % length;
+}
+
+function makeMagazineColumns(articles: Article[], seed: number): MagazineItem[][] {
+  const columns: MagazineItem[][] = [[], [], []];
+  if (articles.length === 0) return columns;
+  articles.forEach((article, originalIndex) => {
+    columns[originalIndex % 3].push({ article, originalIndex, image: false });
+  });
+
+  const signature = articles.map((article) => article.id).join('|');
+  let chosenMask = 0;
+  let lowestScore = Number.POSITIVE_INFINITY;
+
+  for (let mask = 1; mask < 8; mask += 1) {
+    if (columns.some((column, index) => column.length === 0 && (mask & (1 << index)))) continue;
+    const imageCount = columns.reduce((count, _, index) => count + Number(Boolean(mask & (1 << index))), 0);
+    if (articles.length > 1 && imageCount === articles.length) continue;
+
+    const heights = columns.flatMap((column, index) => column.length
+      ? [column.length * 166 + (column.length - 1) * 16 + (mask & (1 << index) ? 224 : 0)]
+      : []);
+    const heightDifference = Math.max(...heights) - Math.min(...heights);
+    const score = heightDifference + Math.abs(imageCount - articles.length / 3) * 80;
+    const tieBreak = seededIndex(seed, `${signature}:${mask}`, 1000) / 1000;
+    if (score + tieBreak < lowestScore) {
+      lowestScore = score + tieBreak;
+      chosenMask = mask;
+    }
+  }
+
+  columns.forEach((column, index) => {
+    if (column.length && chosenMask & (1 << index)) {
+      column[seededIndex(seed, `${signature}:${index}`, column.length)].image = true;
+    }
+  });
+  return columns;
+}
+
 function toArticle(post: Post, index = 0): Article {
   const tag = post.tags[0] || (post.source === 'ai' ? 'AI Side Hustles' : 'Online Income');
   return {
@@ -115,59 +200,54 @@ function navigate(path: string) {
   window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 
-function SocialIcon({ name }: { name: "x" | "threads" | "telegram" | "linkedin" }) {
-  if (name === "x") {
-    return (
-      <svg viewBox="0 0 24 24" aria-hidden="true">
-        <path d="M18.244 2H21.5l-7.11 8.126L22.75 22h-6.54l-5.12-6.693L5.23 22H1.97l7.605-8.692L1.55 2h6.705l4.627 6.118L18.244 2Zm-1.143 17.91h1.804L7.27 3.98H5.334L17.1 19.91Z" />
-      </svg>
-    );
-  }
-  if (name === "threads") {
-    return (
-      <svg viewBox="0 0 24 24" aria-hidden="true">
-        <path d="M12.08 2C7.02 2 4 5.36 4 10.93v2.14C4 18.64 7.02 22 12.08 22c4.38 0 7.13-2.28 7.13-5.86 0-2.58-1.48-4.2-4.2-4.82-.16-2.32-1.53-3.77-3.88-3.77-1.5 0-2.76.52-3.73 1.55l1.22 1.42c.67-.7 1.46-1.05 2.37-1.05 1.1 0 1.78.62 1.94 1.74h-1.44c-2.72 0-4.41 1.3-4.41 3.38 0 2 1.55 3.3 3.94 3.3 2.35 0 3.82-1.2 4.14-3.45 1.26.45 1.9 1.24 1.9 2.37 0 2.02-1.88 3.29-4.88 3.29-3.82 0-5.99-2.48-5.99-6.9v-2.24c0-4.42 2.17-6.9 5.99-6.9 2.98 0 4.84 1.38 5.28 3.9h2.1C19.03 4.43 16.32 2 12.08 2Zm-1 13.96c-1.13 0-1.82-.52-1.82-1.36 0-.92.83-1.46 2.27-1.46h1.48c-.17 1.84-.83 2.82-1.93 2.82Z" />
-      </svg>
-    );
-  }
-  if (name === "telegram") {
-    return (
-      <svg viewBox="0 0 24 24" aria-hidden="true">
-        <path d="M21.74 4.67 18.5 19.95c-.24 1.08-.88 1.34-1.78.84l-4.92-3.63-2.37 2.28c-.26.26-.48.48-.98.48l.35-5.02 9.13-8.25c.4-.35-.09-.55-.62-.2L6.03 13.56 1.17 12.04c-1.05-.33-1.07-1.05.22-1.55L20.4 3.16c.88-.33 1.65.2 1.34 1.51Z" />
-      </svg>
-    );
-  }
-  return (
-    <svg viewBox="0 0 24 24" aria-hidden="true">
-      <path d="M4.98 3.5C4.98 4.88 3.86 6 2.5 6S0 4.88 0 3.5 1.12 1 2.5 1s2.48 1.12 2.48 2.5ZM.33 8h4.33v14H.33V8Zm7 0h4.15v1.92h.06c.58-1.1 2-2.25 4.1-2.25 4.38 0 5.19 2.88 5.19 6.63V22H16.5v-6.82c0-1.63-.03-3.72-2.27-3.72-2.27 0-2.62 1.77-2.62 3.6V22H7.33V8Z" />
-    </svg>
-  );
+function articlePreview(article: Article) {
+  const document = new DOMParser().parseFromString(article.contentHtml, 'text/html');
+  const firstParagraph = Array.from(document.querySelectorAll('p'))
+    .map((paragraph) => paragraph.textContent?.trim())
+    .find(Boolean);
+  const text = (firstParagraph || article.excerpt || '').replace(/\s+/g, ' ').trim();
+  if (text.length <= 130) return text;
+  const wordEnd = text.lastIndexOf(' ', 130);
+  return `${text.slice(0, wordEnd > 90 ? wordEnd : 130)}…`;
 }
 
 function ShareBar({ title, url }: { title: string; url: string }) {
+  const [copied, setCopied] = useState(false);
   const absoluteUrl = typeof window !== "undefined" ? new URL(url, window.location.origin).href : url;
   const shareText = `${title} ${absoluteUrl}`;
   const encodedUrl = encodeURIComponent(absoluteUrl);
   const encodedTitle = encodeURIComponent(title);
   const encodedShareText = encodeURIComponent(shareText);
   const targets = [
-    { label: "X", icon: "x" as const, href: `https://twitter.com/intent/tweet?url=${encodedUrl}&text=${encodedTitle}` },
-    { label: "Threads", icon: "threads" as const, href: `https://www.threads.net/intent/post?text=${encodedShareText}` },
-    { label: "Telegram", icon: "telegram" as const, href: `https://t.me/share/url?url=${encodedUrl}&text=${encodedTitle}` },
-    { label: "LinkedIn", icon: "linkedin" as const, href: `https://www.linkedin.com/sharing/share-offsite/?url=${encodedUrl}` },
+    { label: "Threads", icon: "/design-assets/social/threads.svg", href: `https://www.threads.net/intent/post?text=${encodedShareText}` },
+    { label: "Facebook", icon: "/design-assets/social/facebook.svg", href: `https://www.facebook.com/sharer/sharer.php?u=${encodedUrl}` },
+    { label: "X", icon: "/design-assets/social/x.svg", href: `https://twitter.com/intent/tweet?url=${encodedUrl}&text=${encodedTitle}` },
+    { label: "WhatsApp", icon: "/design-assets/social/whatsapp.svg", href: `https://wa.me/?text=${encodedShareText}` },
   ];
+
+  async function copyLink() {
+    try {
+      await navigator.clipboard.writeText(absoluteUrl);
+      setCopied(true);
+    } catch {
+      setCopied(false);
+    }
+  }
 
   return (
     <aside className="share-bar" aria-label="Share this post">
-      <span className="share-label">Share this post</span>
+      <span className="share-label">share to</span>
       <div className="share-actions">
         {targets.map((target) => (
           <a key={target.label} className="share-link" href={target.href} target="_blank" rel="noreferrer" aria-label={`Share on ${target.label}`}>
-            <SocialIcon name={target.icon} />
-            <span>{target.label}</span>
+            <img src={target.icon} alt="" />
           </a>
         ))}
+        <button className="share-link" type="button" onClick={copyLink} aria-label={copied ? 'Link copied' : 'Copy article link'}>
+          <img src="/design-assets/social/link.svg" alt="" />
+        </button>
       </div>
+      <span className="sr-only" aria-live="polite">{copied ? 'Link copied' : ''}</span>
     </aside>
   );
 }
@@ -184,7 +264,7 @@ function Header() {
   return (
     <header className={`site-header${menuOpen ? ' menu-open' : ''}`}>
       <div className="shell header-inner">
-        <button className="brand" onClick={() => go('/')}>make money<span>ordie</span></button>
+        <button className="brand" onClick={() => go('/')}>makemoneyordie</button>
         <button
           className="menu-toggle"
           type="button"
@@ -206,10 +286,11 @@ function Header() {
   );
 }
 
-function ArticleCard({ article, image = false, className = '' }: { article: Article; image?: boolean; className?: string }) {
+function ArticleCard({ article, image = false, className = '', order, showPreview = false }: { article: Article; image?: boolean; className?: string; order?: number; showPreview?: boolean }) {
   return (
     <article
       className={`article-card${image ? ' with-image' : ''}${className ? ` ${className}` : ''}`}
+      style={order === undefined ? undefined : { order }}
       role="link"
       tabIndex={0}
       onClick={() => navigate(`/articles/${article.slug}`)}
@@ -222,11 +303,12 @@ function ArticleCard({ article, image = false, className = '' }: { article: Arti
     >
       {image && (
         <span className="image-wrap" aria-hidden="true">
-          <span className="cover-placeholder" />
+          <img className="card-cover" src={article.cover} alt="" loading="lazy" />
         </span>
       )}
       <div className="card-body">
         <h3>{article.title}</h3>
+        {showPreview && <p className="card-preview">{articlePreview(article)}</p>}
         <footer className="card-meta">
           <span className="tag-pill">{article.category}</span>
           <span>{article.readingTime} Min</span>
@@ -276,16 +358,19 @@ function Newsletter() {
 }
 
 function HomePage({ articles }: { articles: Article[] }) {
+  const [activeCategory, setActiveCategory] = useState<Category | null>(null);
+  const [layoutSeed] = useState(() => Math.floor(Math.random() * 0xffffffff));
   const displayArticles = articles.length ? articles : demoArticles;
   const featured = displayArticles.slice(0, 3);
-  const catalog = displayArticles.slice(0, 9);
-  const categories = ['Make Money Online', 'Attention Strategy', 'Digital Products', 'Behavioral Economics', 'Side Hustles'];
+  const categoryArticles = activeCategory ? displayArticles.filter((article) => matchesCategory(article, activeCategory)) : displayArticles;
+  const catalog = categoryArticles.slice(0, 9);
+  const magazineColumns = makeMagazineColumns(catalog, layoutSeed);
 
   return (
     <>
       <main className="home-page shell">
         <section className="home-hero">
-          <h1>Build leverage before the rent reminder does it for you.</h1>
+          <h1>Build leverage before the rent<br className="hero-title-break" /> reminder does it for you.</h1>
           <div className="hero-layout">
             <div className="hero-left">
               <p className="hero-deck">
@@ -297,7 +382,7 @@ function HomePage({ articles }: { articles: Article[] }) {
               <section className="author-snapshot" aria-labelledby="author-title">
                 <h2 id="author-title">about author</h2>
                 <div className="author-row">
-                  <img src="/avatars/ava.svg" alt="" />
+                  <img src="/design-assets/author-image.png" alt="Andrew Nickolson" />
                   <div>
                     <h3>Andrew Nickolson</h3>
                     <p>Writer, operator, and systems thinker.</p>
@@ -306,8 +391,8 @@ function HomePage({ articles }: { articles: Article[] }) {
                   </div>
                 </div>
                 <div className="author-stats">
-                  <span><span className="mini-badge">ok</span> publisher of a month</span>
-                  <span><span className="mini-badge flag">15</span> 15 years in business</span>
+                  <span><img className="mini-badge" src="/design-assets/badge-check.svg" alt="" /> publisher of a month</span>
+                  <span><img className="mini-badge flag" src="/design-assets/flag.svg" alt="" /> 15 years in business</span>
                 </div>
               </section>
             </div>
@@ -323,10 +408,10 @@ function HomePage({ articles }: { articles: Article[] }) {
 
         <section id="subscribe" className="mid-feature">
           <div className="feature-photo" aria-hidden="true">
-            <img src="/covers/cover2.png" alt="" />
+            <img src="/design-assets/newsletter-photo.png" alt="" />
           </div>
           <div className="subscribe-panel">
-            <p className="section-kicker"><span><MoreHorizontal size={18} /></span> stay updated</p>
+            <p className="section-kicker"><img src="/design-assets/more-button.svg" alt="" /> stay updated</p>
             <h2>Read what matters.</h2>
             <Newsletter />
             <p className="consent-copy">By subscribing, you agree to receive our weekly newsletter. You can unsubscribe at any time.</p>
@@ -337,27 +422,34 @@ function HomePage({ articles }: { articles: Article[] }) {
 
         <section className="article-section">
           <div className="article-section-head">
-            <h2>200+ articles</h2>
+            <h2 aria-live="polite">{categoryArticles.length} {categoryArticles.length === 1 ? 'article' : 'articles'}</h2>
             <div className="category-tools">
               <span>browse by category:</span>
-              <button className="tag-pill active" type="button">Popular Now</button>
+              <button className={`tag-pill category-reset${activeCategory === null ? ' active' : ''}`} type="button" aria-pressed={activeCategory === null} onClick={() => setActiveCategory(null)}>Popular Now</button>
             </div>
           </div>
           <div className="category-row">
-            {categories.map((category) => <button key={category} className="category-chip" type="button">{category}</button>)}
+            {categories.map((category) => <button key={category} className={`category-chip${activeCategory === category ? ' is-active' : ''}`} type="button" aria-pressed={activeCategory === category} onClick={() => setActiveCategory((current) => current === category ? null : category)}>{category}</button>)}
           </div>
-          <div className="magazine-grid">
-            {catalog.map((article, index) => (
-              <ArticleCard key={article.id} article={article} image={[0, 4, 7].includes(index)} />
-            ))}
-          </div>
+          {activeCategory && <p className="category-status">Showing {activeCategory}</p>}
+          {catalog.length ? (
+            <div className="magazine-grid">
+              {magazineColumns.map((column, index) => (
+                <div className="magazine-column" key={index}>
+                  {column.map(({ article, originalIndex, image }) => (
+                    <ArticleCard key={article.id} article={article} image={image} order={originalIndex} />
+                  ))}
+                </div>
+              ))}
+            </div>
+          ) : <p className="category-empty">No articles in this category yet. Choose another category or <button type="button" onClick={() => setActiveCategory(null)}>view popular articles</button>.</p>}
           <div className="quote-row">
-            <img src="/avatars/ava.svg" alt="" />
+            <img src="/design-assets/author-image.png" alt="Andrew Nickolson" />
             <div>
               <strong>Andrew Nickolson</strong>
               <p>"The internet did not create new opportunities. It removed the receptionist."</p>
             </div>
-            <button className="load-more" type="button" onClick={() => navigate('/articles')}>Load More <ChevronDown size={18} /></button>
+            <button className="load-more" type="button" onClick={() => navigate(activeCategory ? `/articles?category=${encodeURIComponent(activeCategory)}` : '/articles')}>Load More <ChevronDown size={18} /></button>
           </div>
         </section>
       </main>
@@ -365,8 +457,9 @@ function HomePage({ articles }: { articles: Article[] }) {
   );
 }
 
-function ArticlesPage({ articles, initialQuery = '' }: { articles: Article[]; initialQuery?: string }) {
+function ArticlesPage({ articles, initialQuery = '', initialCategory = '' }: { articles: Article[]; initialQuery?: string; initialCategory?: string }) {
   const [query, setQuery] = useState(initialQuery);
+  const category = isCategory(initialCategory) ? initialCategory : null;
 
   useEffect(() => {
     setQuery(initialQuery);
@@ -374,9 +467,8 @@ function ArticlesPage({ articles, initialQuery = '' }: { articles: Article[]; in
 
   const filtered = useMemo(() => {
     const q = query.toLowerCase().trim();
-    if (!q) return articles;
-    return articles.filter((article) => [article.title, article.excerpt, article.category, ...article.tags].join(' ').toLowerCase().includes(q));
-  }, [articles, query]);
+    return articles.filter((article) => (!category || matchesCategory(article, category)) && (!q || [article.title, article.excerpt, article.category, ...article.tags].join(' ').toLowerCase().includes(q)));
+  }, [articles, category, query]);
 
   return (
     <main className="shell archive-page">
@@ -388,15 +480,17 @@ function ArticlesPage({ articles, initialQuery = '' }: { articles: Article[]; in
       <div className="filters">
         <label className="search-input-wrap">
           <Search size={18} />
-          <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search side hustles, leverage, attention..." />
+          <input type="search" aria-label="Search articles" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search side hustles, leverage, attention..." />
         </label>
       </div>
+      {category && <div className="archive-filter-summary"><span aria-live="polite">{filtered.length} {filtered.length === 1 ? 'article' : 'articles'} in {category}</span><button type="button" onClick={() => navigate(query.trim() ? `/articles?search=${encodeURIComponent(query.trim())}` : '/articles')}>Clear category</button></div>}
+      {filtered.length === 0 && <p className="category-empty">No articles found. Try another search or category.</p>}
       <ArticleGrid articles={filtered} />
     </main>
   );
 }
 
-function ArticlePage({ article }: { article?: Article }) {
+function ArticlePage({ article, relatedArticles }: { article?: Article; relatedArticles: Article[] }) {
   if (!article) {
     return (
       <main className="shell not-found">
@@ -412,20 +506,41 @@ function ArticlePage({ article }: { article?: Article }) {
     );
   }
 
+  const publishedAt = new Date(article.createdAt);
+  const publishedDate = Number.isNaN(publishedAt.getTime())
+    ? ''
+    : `${publishedAt.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' })}, ${publishedAt.getFullYear()}`;
+
   return (
     <main className="shell article-page">
-      <section className="article-hero">
-        <p className="author-line">Andrew Nicklson</p>
-        <div className="tag-row">{article.tags.map((tag) => <span key={tag}>{tag}</span>)}</div>
+      <header className="article-intro">
         <h1>{article.title}</h1>
-        <p className="article-lead">{article.excerpt}</p>
-      </section>
-      <div className="article-cover">
-        <img className="cover" src={article.cover} alt="" />
+        <div className="article-cover"><img src={article.cover} alt="" /></div>
+        <div className="article-author">
+          <img src="/design-assets/author-image.png" alt="" />
+          <div><span>Author</span><strong>{article.author}</strong></div>
+        </div>
+        <div className="article-details">
+          <span className="tag-pill">{article.category}</span>
+          <time dateTime={article.createdAt}>{publishedDate}</time>
+          <span>{article.readingTime} Min Read</span>
+        </div>
+      </header>
+      <div className="article-content-layout">
+        <div className="article-main">
+          <article className="markdown" dangerouslySetInnerHTML={{ __html: article.contentHtml }} />
+          <div className="article-ad" aria-label="Advertisement">ADVERT</div>
+        </div>
+        <aside className="article-sidebar">
+          <ShareBar title={article.title} url={`/articles/${article.slug}`} />
+          <section className="related-articles" aria-labelledby="related-title">
+            <h2 id="related-title">related articles</h2>
+            <div className="related-list">
+              {relatedArticles.map((related) => <ArticleCard key={related.id} article={related} showPreview />)}
+            </div>
+          </section>
+        </aside>
       </div>
-      <ShareBar title={article.title} url={`/articles/${article.slug}`} />
-      <article className="markdown" dangerouslySetInnerHTML={{ __html: article.contentHtml }} />
-      <button className="btn secondary" onClick={() => navigate('/articles')}>Back to all articles</button>
     </main>
   );
 }
@@ -473,12 +588,13 @@ function AboutPage() {
 
 function AdminPanel() {
   const editorPanelRef = useRef<HTMLFormElement | null>(null);
-  const [email, setEmail] = useState('admin@makemoneyordie.local');
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [token, setToken] = useState('');
   const [csrfToken, setCsrfToken] = useState('');
   const [posts, setPosts] = useState<Post[]>([]);
   const [coverImages, setCoverImages] = useState<MediaAsset[]>([]);
+  const [subscribers, setSubscribers] = useState<SubscriberRecord[]>([]);
   const [settings, setSettings] = useState<AdminSettings | null>(null);
   const [draft, setDraft] = useState(emptyDraft);
   const [editingSlug, setEditingSlug] = useState('');
@@ -505,14 +621,16 @@ function AdminPanel() {
   }, [token]);
 
   async function load(nextToken = token) {
-    const [loadedPosts, loadedSettings, loadedCoverImages] = await Promise.all([
+    const [loadedPosts, loadedSettings, loadedCoverImages, loadedSubscribers] = await Promise.all([
       request<Post[]>('/api/admin/posts', {}, nextToken),
       request<AdminSettings>('/api/admin/settings', {}, nextToken),
       request<MediaAsset[]>('/api/admin/media/covers', {}, nextToken),
+      request<SubscriberRecord[]>('/api/admin/subscribers', {}, nextToken),
     ]);
     setPosts(loadedPosts);
     setSettings(loadedSettings);
     setCoverImages(loadedCoverImages);
+    setSubscribers(loadedSubscribers);
   }
 
   async function signIn(event: React.FormEvent) {
@@ -538,10 +656,12 @@ function AdminPanel() {
     event.preventDefault();
     setBusy(true);
     try {
+      const { category, ...postDraft } = draft;
+      const tags = draft.tags.split(',').map((tag) => tag.trim()).filter(Boolean);
       const body = {
-        ...draft,
+        ...postDraft,
         coverImage: draft.coverImage || null,
-        tags: draft.tags.split(',').map((tag) => tag.trim()).filter(Boolean),
+        tags: category ? [category, ...tags.filter((tag) => tag.toLowerCase() !== category.toLowerCase())] : tags,
       };
       await request<Post>(editingSlug ? `/api/admin/posts/${editingSlug}` : '/api/admin/posts', {
         method: editingSlug ? 'PUT' : 'POST',
@@ -640,8 +760,16 @@ function AdminPanel() {
 
   async function saveSettings() {
     if (!settings) return;
-    await request<AdminSettings>('/api/admin/settings', { method: 'PUT', body: JSON.stringify(settings) }, token);
-    setMessage('Settings saved.');
+    setBusy(true);
+    try {
+      const saved = await request<AdminSettings>('/api/admin/settings', { method: 'PUT', body: JSON.stringify(settings) }, token);
+      setSettings(saved);
+      setMessage('Settings saved.');
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'Could not save settings.');
+    } finally {
+      setBusy(false);
+    }
   }
 
   function updateGenerationCount(count: number) {
@@ -671,8 +799,8 @@ function AdminPanel() {
       <main className="admin-page">
         <form className="admin-login" onSubmit={signIn}>
           <h1>Admin sign in</h1>
-          <label><span>Email</span><input value={email} onChange={(event) => setEmail(event.target.value)} /></label>
-          <label><span>Password</span><input type="password" value={password} onChange={(event) => setPassword(event.target.value)} /></label>
+          <label><span>Email or username</span><input value={email} autoComplete="username" onChange={(event) => setEmail(event.target.value)} required /></label>
+          <label><span>Password</span><input type="password" value={password} autoComplete="current-password" onChange={(event) => setPassword(event.target.value)} required /></label>
           <button disabled={busy}>Sign in</button>
           {message && <p className="form-message">{message}</p>}
         </form>
@@ -693,6 +821,7 @@ function AdminPanel() {
         <form ref={editorPanelRef} className="editor-panel" onSubmit={savePost}>
           <h2>{editingSlug ? 'Edit article' : 'Create article'}</h2>
           <label><span>Title</span><input value={draft.title} onChange={(event) => setDraft({ ...draft, title: event.target.value })} required /></label>
+          <label><span>Category</span><select value={draft.category} onChange={(event) => setDraft({ ...draft, category: event.target.value })}><option value="">Choose a category</option>{categories.map((category) => <option key={category} value={category}>{category}</option>)}</select></label>
           <label><span>Slug</span><input value={draft.slug} onChange={(event) => setDraft({ ...draft, slug: event.target.value })} /></label>
           <label><span>Excerpt</span><textarea value={draft.excerpt} onChange={(event) => setDraft({ ...draft, excerpt: event.target.value })} required /></label>
           <label><span>HTML content</span><textarea rows={10} value={draft.contentHtml} onChange={(event) => setDraft({ ...draft, contentHtml: event.target.value })} required /></label>
@@ -716,14 +845,28 @@ function AdminPanel() {
               <article key={post.id}>
                 <div><strong>{post.title}</strong><small>{post.slug}</small></div>
                 <button onClick={() => {
+                  const category = categories.find((candidate) => post.tags.some((tag) => tag.toLowerCase() === candidate.toLowerCase())) || '';
                   setEditingSlug(post.slug);
-                  setDraft({ title: post.title, slug: post.slug, excerpt: post.excerpt, contentHtml: post.contentHtml, status: post.status, tags: post.tags.join(', '), coverImage: post.coverImage || '' });
+                  setDraft({ title: post.title, slug: post.slug, excerpt: post.excerpt, contentHtml: post.contentHtml, status: post.status, category, tags: post.tags.filter((tag) => tag.toLowerCase() !== category.toLowerCase()).join(', '), coverImage: post.coverImage || '' });
                 }}><FilePlus size={16} /> Edit</button>
                 <button onClick={() => removePost(post.slug)}><Trash2 size={16} /> Delete</button>
               </article>
             ))}
           </div>
         </section>
+      </section>
+      <section className="settings-panel subscribers-panel">
+        <h2>Newsletter subscribers <span>{subscribers.length}</span></h2>
+        {subscribers.length ? (
+          <div className="subscribers-list">
+            {subscribers.map((subscriber) => (
+              <div key={subscriber.email}>
+                <span>{subscriber.email}</span>
+                <time dateTime={subscriber.createdAt}>{new Date(subscriber.createdAt).toLocaleDateString()}</time>
+              </div>
+            ))}
+          </div>
+        ) : <p className="empty-note">No subscribers yet.</p>}
       </section>
       <section className="settings-panel media-panel">
         <div className="media-panel-head">
@@ -753,6 +896,24 @@ function AdminPanel() {
       {settings && (
         <section className="settings-panel">
           <h2>AI generation settings</h2>
+          <div className="settings-row">
+            <label><span>OpenRouter API key {settings.hasOpenRouterApiKey && '(saved)'}</span><input type="password" autoComplete="new-password" placeholder={settings.hasOpenRouterApiKey ? 'Leave blank to keep current key' : 'Enter API key'} value={settings.openRouterApiKey} onChange={(event) => setSettings({ ...settings, openRouterApiKey: event.target.value, clearOpenRouterApiKey: false })} /></label>
+            <label><span>OpenRouter model</span><input value={settings.openRouterModel} onChange={(event) => setSettings({ ...settings, openRouterModel: event.target.value })} /></label>
+          </div>
+          {settings.hasOpenRouterApiKey && <label className="checkbox"><input type="checkbox" checked={Boolean(settings.clearOpenRouterApiKey)} onChange={(event) => setSettings({ ...settings, clearOpenRouterApiKey: event.target.checked, openRouterApiKey: '' })} /> Remove saved API key</label>}
+          <div className="settings-row">
+            <label><span>Site URL sent to OpenRouter</span><input type="url" value={settings.openRouterSiteUrl} onChange={(event) => setSettings({ ...settings, openRouterSiteUrl: event.target.value })} /></label>
+            <label><span>Schedule timezone</span><input value={settings.timezone} onChange={(event) => setSettings({ ...settings, timezone: event.target.value })} placeholder="Europe/Sofia" /></label>
+          </div>
+          <div className="settings-row">
+            <label><span>Request timeout (ms)</span><input type="number" min={5000} max={180000} value={settings.openRouterTimeoutMs} onChange={(event) => setSettings({ ...settings, openRouterTimeoutMs: Number(event.target.value) })} /></label>
+            <label><span>Retry attempts</span><input type="number" min={1} max={5} value={settings.openRouterRetryAttempts} onChange={(event) => setSettings({ ...settings, openRouterRetryAttempts: Number(event.target.value) })} /></label>
+          </div>
+          <div className="settings-row">
+            <label><span>Max prompt characters</span><input type="number" min={1000} max={100000} value={settings.openRouterMaxInputChars} onChange={(event) => setSettings({ ...settings, openRouterMaxInputChars: Number(event.target.value) })} /></label>
+            <label><span>Max output tokens</span><input type="number" min={256} max={32000} value={settings.openRouterMaxOutputTokens} onChange={(event) => setSettings({ ...settings, openRouterMaxOutputTokens: Number(event.target.value) })} /></label>
+            <label><span>Temperature</span><input type="number" min={0} max={2} step={0.1} value={settings.openRouterTemperature} onChange={(event) => setSettings({ ...settings, openRouterTemperature: Number(event.target.value) })} /></label>
+          </div>
           <label><span>Master prompt</span><textarea rows={7} value={settings.masterPrompt} onChange={(event) => setSettings({ ...settings, masterPrompt: event.target.value })} /></label>
           <div className="settings-row">
             <label>
@@ -789,26 +950,121 @@ function AdminPanel() {
             </div>
           )}
           <label className="checkbox"><input type="checkbox" checked={settings.autoGenerationEnabled} onChange={(event) => setSettings({ ...settings, autoGenerationEnabled: event.target.checked })} /> Auto generation enabled</label>
-          <button onClick={saveSettings}><Save size={16} /> Save settings</button>
+          <button onClick={saveSettings} disabled={busy}><Save size={16} /> Save settings</button>
         </section>
       )}
     </main>
   );
 }
 
-function Footer() {
+type PolicyKind = 'terms' | 'privacy' | 'cookies';
+
+const policyTitles: Record<PolicyKind, string> = {
+  terms: 'Terms of Use',
+  privacy: 'Privacy Policy',
+  cookies: 'Cookie Policy',
+};
+
+function PolicyDialog({ policy, onClose }: { policy: PolicyKind | null; onClose: () => void }) {
+  const dialogRef = useRef<HTMLDialogElement | null>(null);
+  const [email, setEmail] = useState('');
+  const [message, setMessage] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    const dialog = dialogRef.current;
+    if (policy && dialog && !dialog.open) dialog.showModal();
+    if (!policy && dialog?.open) dialog.close();
+  }, [policy]);
+
+  async function submitUnsubscribe(event: React.FormEvent) {
+    event.preventDefault();
+    setBusy(true);
+    setMessage('');
+    try {
+      await unsubscribe(email);
+      setEmail('');
+      setMessage('Your newsletter subscription has been removed.');
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'Could not remove the subscription.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
-    <footer className="site-footer">
+    <dialog ref={dialogRef} className="policy-dialog" onClose={onClose} onClick={(event) => { if (event.target === dialogRef.current) dialogRef.current?.close(); }} aria-labelledby="policy-title">
+      {policy && <div className="policy-dialog-inner">
+        <header className="policy-dialog-header">
+          <h2 id="policy-title">{policyTitles[policy]}</h2>
+          <button type="button" aria-label="Close policy" onClick={() => dialogRef.current?.close()}><X size={20} /></button>
+        </header>
+        <div className="policy-dialog-body">
+          {policy === 'terms' && <>
+            <section><h3>About this site</h3><p>MakeMoneyOrDie publishes articles about money, online work, and business. You may browse the site and share links to its articles for personal use.</p></section>
+            <section><h3>Editorial information</h3><p>Articles are for general information and education. They are not personal financial, investment, tax, or legal advice, and they do not promise any particular result. Check important decisions with a qualified professional where appropriate.</p></section>
+            <section><h3>Use of content</h3><p>Please do not republish complete articles or use the site in a way that disrupts access for others. We may update articles and these terms as the site changes.</p></section>
+          </>}
+          {policy === 'privacy' && <>
+            <section><h3>Newsletter data</h3><p>When you subscribe, we store the email address you enter and the time of subscription in our database. We use this information to manage the newsletter. Subscriber email addresses are not sent to the article-generation service.</p></section>
+            <section><h3>Account and session data</h3><p>Administrators sign in with an account. The site stores account details and a temporary authentication session so they can manage articles and settings securely.</p></section>
+            <section><h3>Your choices</h3><p>You can remove your email address from the subscriber list below. If you subscribed again later, a new record will be created.</p></section>
+            <form className="policy-unsubscribe" onSubmit={submitUnsubscribe}>
+              <label htmlFor="unsubscribe-email">Unsubscribe from the newsletter</label>
+              <div><input id="unsubscribe-email" type="email" autoComplete="email" placeholder="Enter your email" value={email} onChange={(event) => setEmail(event.target.value)} required disabled={busy} /><button type="submit" disabled={busy}>{busy ? 'Removing...' : 'Unsubscribe'}</button></div>
+              {message && <p role="status">{message}</p>}
+            </form>
+          </>}
+          {policy === 'cookies' && <>
+            <section><h3>Essential admin cookie</h3><p>After an administrator signs in, the site uses an HTTP-only refresh cookie to keep that account signed in. It is used for authentication, lasts for up to 30 days, and is removed on sign-out. In production, it is sent only over HTTPS.</p></section>
+            <section><h3>Other cookies</h3><p>The public site does not currently set advertising or analytics cookies. You can clear cookies in your browser settings; doing so may sign an administrator out.</p></section>
+          </>}
+        </div>
+      </div>}
+    </dialog>
+  );
+}
+
+function Footer({ initialPolicy = null }: { initialPolicy?: PolicyKind | null }) {
+  const [email, setEmail] = useState('');
+  const [message, setMessage] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [policy, setPolicy] = useState<PolicyKind | null>(initialPolicy);
+
+  useEffect(() => {
+    if (initialPolicy) setPolicy(initialPolicy);
+  }, [initialPolicy]);
+
+  async function submitFooterSignup(event: React.FormEvent) {
+    event.preventDefault();
+    setBusy(true);
+    setMessage('');
+    try {
+      await subscribe(email);
+      setEmail('');
+      setMessage('You are subscribed. Thank you!');
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'Could not subscribe right now.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <><footer className="site-footer">
       <div className="shell footer-inner">
-        <form className="footer-signup">
-          <p><span><DollarSign size={18} /></span> your weekly money signal</p>
-          <label>
-            <span className="sr-only">Email</span>
-            <input type="email" placeholder="Enter your email" />
-          </label>
-          <button type="button">Subscribe</button>
+        <form className="footer-signup" onSubmit={submitFooterSignup}>
+          <p><img src="/design-assets/weekly-money-signal.svg" alt="" /> your weekly money signal</p>
+          <div className="footer-email-field">
+            <label>
+              <span className="sr-only">Email</span>
+              <input type="email" autoComplete="email" placeholder="Enter your email" value={email} onChange={(event) => setEmail(event.target.value)} required disabled={busy} />
+            </label>
+            <p className={`footer-signup-message${message && message !== 'You are subscribed. Thank you!' ? ' error' : ''}`} role="status">{message}</p>
+          </div>
+          <button type="submit" disabled={busy}>{busy ? 'Subscribing...' : 'Subscribe'}</button>
         </form>
-        <p className="footer-consent">By subscribing, you agree to receive our weekly newsletter.<br />You can unsubscribe at any time.</p>
+        <p className="footer-consent">By subscribing, you agree to receive our weekly newsletter.<br />You can <button type="button" onClick={() => setPolicy('privacy')}>unsubscribe</button> at any time.</p>
         <div className="footer-bottom">
           <div className="footer-notes">
             <span># sharp essays by Andrew Nickolson</span>
@@ -816,16 +1072,16 @@ function Footer() {
             <span>© makemoney or die</span>
           </div>
           <nav className="footer-links" aria-label="Footer">
-            <a href="/terms">Terms of Use</a>
-            <a href="/privacy">Privacy Policy</a>
-            <a href="/cookies">Cookie Policy</a>
+            <button type="button" onClick={() => setPolicy('terms')}>Terms of Use</button>
+            <button type="button" onClick={() => setPolicy('privacy')}>Privacy Policy</button>
+            <button type="button" onClick={() => setPolicy('cookies')}>Cookie Policy</button>
           </nav>
           <button className="back-top" type="button" aria-label="Back to top" onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}>
             <ArrowUp size={22} />
           </button>
         </div>
       </div>
-    </footer>
+    </footer><PolicyDialog policy={policy} onClose={() => setPolicy(null)} /></>
   );
 }
 
@@ -845,15 +1101,20 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    getPosts().then(setPosts).catch((err) => setError(err instanceof Error ? err.message : 'Could not load articles.'));
-  }, []);
+    getPosts().then((loadedPosts) => { setPosts(loadedPosts); setError(''); }).catch((err) => setError(err instanceof Error ? err.message : 'Could not load articles.'));
+  }, [route]);
 
-  const articles = posts.map(toArticle);
+  const articles = posts.length ? posts.map(toArticle) : demoArticles;
   const [path] = route.split('?');
   const searchParams = new URLSearchParams(route.includes('?') ? route.slice(route.indexOf('?')) : '');
   const initialSearch = searchParams.get('search') || '';
+  const initialCategory = searchParams.get('category') || '';
+  const initialPolicy: PolicyKind | null = path === '/terms' ? 'terms' : path === '/privacy' ? 'privacy' : path === '/cookies' ? 'cookies' : null;
   const slug = path.startsWith('/articles/') ? decodeURIComponent(path.replace('/articles/', '')) : '';
   const article = slug ? articles.find((item) => item.slug === slug) : undefined;
+  const relatedArticles = [...articles, ...demoArticles]
+    .filter((item, index, all) => item.slug !== slug && all.findIndex((candidate) => candidate.slug === item.slug) === index)
+    .slice(0, 3);
 
   useEffect(() => {
     if (!slug || article || posts.length === 0) return;
@@ -864,8 +1125,8 @@ export default function App() {
     <>
       <Header />
       {error && <div className="load-error">{error}</div>}
-      {path === '/admin' ? <AdminPanel /> : path === '/about' ? <AboutPage /> : path === '/articles' ? <ArticlesPage articles={articles} initialQuery={initialSearch} /> : slug ? <ArticlePage article={article} /> : <HomePage articles={articles} />}
-      {path !== '/admin' && <Footer />}
+      {path === '/admin' ? <AdminPanel /> : path === '/about' ? <AboutPage /> : path === '/articles' ? <ArticlesPage articles={articles} initialQuery={initialSearch} initialCategory={initialCategory} /> : slug ? <ArticlePage article={article} relatedArticles={relatedArticles} /> : <HomePage articles={articles} />}
+      {path !== '/admin' && <Footer initialPolicy={initialPolicy} />}
     </>
   );
 }

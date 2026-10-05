@@ -1,4 +1,14 @@
+.venv
+__pycache__
+*.pyc
+db.sqlite3
+staticfiles
+uploads
+.env*
 node_modules
-npm-debug.log
+src
 dist
-.env
+data
+scripts
+package*.json
+tsconfig.json

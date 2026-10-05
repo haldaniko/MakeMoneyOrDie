@@ -1,11 +1,4 @@
 services:
-  env-setup:
-    image: node:20-alpine
-    working_dir: /workspace
-    volumes:
-      - .:/workspace
-    command: ["node", "scripts/setup-dev-env.mjs"]
-
   postgres:
     image: postgres:16-alpine
     environment:
@@ -20,16 +13,7 @@ services:
       timeout: 5s
       retries: 20
 
-  redis:
-    image: redis:7-alpine
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 5s
-      timeout: 5s
-      retries: 20
-
   backend:
-    image: makemoneyordie-backend-dev
     build:
       context: ./backend
       target: dev
@@ -37,62 +21,42 @@ services:
       - "4000:4000"
     volumes:
       - makemoneyordie_uploads:/app/uploads
-    env_file:
-      - path: backend/.env
-        required: false
     environment:
+      DJANGO_DEBUG: "1"
       DATABASE_URL: postgres://makemoneyordie:makemoneyordie@postgres:5432/makemoneyordie
-      REDIS_URL: redis://redis:6379
-      CORS_ORIGIN: http://localhost:3000
+      CORS_ALLOWED_ORIGINS: http://localhost:3000,http://127.0.0.1:3000
     depends_on:
-      env-setup:
-        condition: service_completed_successfully
       postgres:
         condition: service_healthy
-      redis:
-        condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:4000/api/health || exit 1"]
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:4000/api/health', timeout=3)"]
       interval: 10s
       timeout: 5s
       retries: 20
 
+  scheduler:
+    build:
+      context: ./backend
+      target: dev
+    command: ["python", "manage.py", "run_generation_scheduler"]
+    environment:
+      DJANGO_DEBUG: "1"
+      DATABASE_URL: postgres://makemoneyordie:makemoneyordie@postgres:5432/makemoneyordie
+    depends_on:
+      backend:
+        condition: service_healthy
+
   frontend:
-    image: makemoneyordie-frontend-dev
     build:
       context: ./frontend
       target: dev
     ports:
       - "3000:3000"
-    env_file:
-      - path: frontend/.env
-        required: false
     environment:
       VITE_API_URL: http://localhost:4000
     depends_on:
-      env-setup:
-        condition: service_completed_successfully
       backend:
         condition: service_healthy
-
-  admin-seed:
-    image: makemoneyordie-backend-dev
-    env_file:
-      - path: backend/.env
-        required: false
-    environment:
-      DATABASE_URL: postgres://makemoneyordie:makemoneyordie@postgres:5432/makemoneyordie
-      LOCAL_SUPERADMIN_EMAIL: ${LOCAL_SUPERADMIN_EMAIL:-admin@makemoneyordie.local}
-      LOCAL_SUPERADMIN_PASSWORD: ${LOCAL_SUPERADMIN_PASSWORD:-MySecretPassword123!}
-    command: npm run create-superadmin
-    depends_on:
-      env-setup:
-        condition: service_completed_successfully
-      postgres:
-        condition: service_healthy
-      backend:
-        condition: service_healthy
-    restart: "no"
 
 volumes:
   makemoneyordie_postgres_data:

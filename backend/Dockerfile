@@ -1,29 +1,14 @@
-FROM node:20-alpine AS base
-
+FROM python:3.13-slim AS base
+ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
 WORKDIR /app
-COPY package*.json ./
-RUN npm ci
+COPY requirements.txt ./
+RUN pip install --no-cache-dir -r requirements.txt
+COPY . .
+EXPOSE 4000
 
 FROM base AS dev
+CMD ["sh", "-c", "python manage.py migrate --noinput && python manage.py import_legacy && python manage.py runserver 0.0.0.0:4000"]
 
-ENV NODE_ENV=development
-COPY . .
-EXPOSE 4000
-CMD ["npm", "run", "dev"]
-
-FROM base AS build
-
-COPY . .
-RUN npm run build
-
-FROM node:20-alpine AS prod
-
-WORKDIR /app
-ENV NODE_ENV=production
-RUN apk add --no-cache tzdata
-COPY package*.json ./
-RUN npm ci --omit=dev
-COPY --from=build /app/dist ./dist
-COPY scripts ./scripts
-EXPOSE 4000
-CMD ["npm", "run", "start"]
+FROM base AS prod
+RUN python manage.py collectstatic --noinput
+CMD ["sh", "-c", "python manage.py migrate --noinput && python manage.py import_legacy && gunicorn config.wsgi:application --bind 0.0.0.0:4000 --workers 2 --timeout 1000"]

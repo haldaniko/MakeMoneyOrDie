@@ -8,12 +8,19 @@ frontend/out/
 # Build
 backend/dist/
 frontend/dist/
+backend/.venv/
+backend/db.sqlite3
+backend/staticfiles/
+backend/uploads/
+__pycache__/
+*.py[cod]
 .design-docs-extracted/
 
 # Env files
 .env
 backend/.env
 frontend/.env
+.env.production
 
 # OS
 .DS_Store

@@ -31,6 +31,16 @@ export async function subscribe(email: string) {
   );
 }
 
+export async function unsubscribe(email: string) {
+  return parseData<{ ok: boolean }>(
+    await fetch(`${apiUrl}/api/unsubscribe`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email }),
+    }),
+  );
+}
+
 export async function request<T>(path: string, options: RequestInit = {}, token?: string, csrfToken?: string): Promise<T> {
   const headers = new Headers(options.headers);
   headers.set('Content-Type', 'application/json');
