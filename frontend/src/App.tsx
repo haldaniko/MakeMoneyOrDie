@@ -359,12 +359,19 @@ function Newsletter() {
 
 function HomePage({ articles }: { articles: Article[] }) {
   const [activeCategory, setActiveCategory] = useState<Category | null>(null);
+  const [visibleArticleCount, setVisibleArticleCount] = useState(9);
   const [layoutSeed] = useState(() => Math.floor(Math.random() * 0xffffffff));
   const displayArticles = articles.length ? articles : demoArticles;
   const featured = displayArticles.slice(0, 3);
   const categoryArticles = activeCategory ? displayArticles.filter((article) => matchesCategory(article, activeCategory)) : displayArticles;
-  const catalog = categoryArticles.slice(0, 9);
-  const magazineColumns = makeMagazineColumns(catalog, layoutSeed);
+  const magazineColumns: MagazineItem[][] = [[], [], []];
+  for (let start = 0; start < categoryArticles.length; start += 9) {
+    const batchColumns = makeMagazineColumns(categoryArticles.slice(start, start + 9), layoutSeed + start);
+    batchColumns.forEach((column, columnIndex) => {
+      magazineColumns[columnIndex].push(...column.map((item) => ({ ...item, originalIndex: item.originalIndex + start })));
+    });
+  }
+  const visibleColumns = magazineColumns.map((column) => column.filter(({ originalIndex }) => originalIndex < visibleArticleCount));
 
   return (
     <>
@@ -425,16 +432,16 @@ function HomePage({ articles }: { articles: Article[] }) {
             <h2 aria-live="polite">{categoryArticles.length} {categoryArticles.length === 1 ? 'article' : 'articles'}</h2>
             <div className="category-tools">
               <span>browse by category:</span>
-              <button className={`tag-pill category-reset${activeCategory === null ? ' active' : ''}`} type="button" aria-pressed={activeCategory === null} onClick={() => setActiveCategory(null)}>Popular Now</button>
+              <button className={`tag-pill category-reset${activeCategory === null ? ' active' : ''}`} type="button" aria-pressed={activeCategory === null} onClick={() => { setActiveCategory(null); setVisibleArticleCount(9); }}>Popular Now</button>
             </div>
           </div>
           <div className="category-row">
-            {categories.map((category) => <button key={category} className={`category-chip${activeCategory === category ? ' is-active' : ''}`} type="button" aria-pressed={activeCategory === category} onClick={() => setActiveCategory((current) => current === category ? null : category)}>{category}</button>)}
+            {categories.map((category) => <button key={category} className={`category-chip${activeCategory === category ? ' is-active' : ''}`} type="button" aria-pressed={activeCategory === category} onClick={() => { setActiveCategory((current) => current === category ? null : category); setVisibleArticleCount(9); }}>{category}</button>)}
           </div>
           {activeCategory && <p className="category-status">Showing {activeCategory}</p>}
-          {catalog.length ? (
+          {categoryArticles.length ? (
             <div className="magazine-grid">
-              {magazineColumns.map((column, index) => (
+              {visibleColumns.map((column, index) => (
                 <div className="magazine-column" key={index}>
                   {column.map(({ article, originalIndex, image }) => (
                     <ArticleCard key={article.id} article={article} image={image} order={originalIndex} />
@@ -442,14 +449,18 @@ function HomePage({ articles }: { articles: Article[] }) {
                 </div>
               ))}
             </div>
-          ) : <p className="category-empty">No articles in this category yet. Choose another category or <button type="button" onClick={() => setActiveCategory(null)}>view popular articles</button>.</p>}
+          ) : <p className="category-empty">No articles in this category yet. Choose another category or <button type="button" onClick={() => { setActiveCategory(null); setVisibleArticleCount(9); }}>view popular articles</button>.</p>}
           <div className="quote-row">
             <img src="/design-assets/author-image.png" alt="Andrew Nickolson" />
             <div>
               <strong>Andrew Nickolson</strong>
               <p>"The internet did not create new opportunities. It removed the receptionist."</p>
             </div>
-            <button className="load-more" type="button" onClick={() => navigate(activeCategory ? `/articles?category=${encodeURIComponent(activeCategory)}` : '/articles')}>Load More <ChevronDown size={18} /></button>
+            {visibleArticleCount < categoryArticles.length && (
+              <button className="load-more" type="button" onClick={() => setVisibleArticleCount((count) => Math.min(count + 9, categoryArticles.length))}>
+                Load More <ChevronDown size={18} />
+              </button>
+            )}
           </div>
         </section>
       </main>
@@ -958,6 +969,73 @@ function AdminPanel() {
 }
 
 type PolicyKind = 'terms' | 'privacy' | 'cookies';
+type AnalyticsConsent = 'analytics' | 'essential' | null;
+
+const GOOGLE_ANALYTICS_ID = 'G-LSPQ8685TS';
+const CONSENT_COOKIE = 'mmd_cookie_consent';
+const CONSENT_MAX_AGE = 60 * 60 * 24 * 180;
+
+declare global {
+  interface Window {
+    dataLayer?: unknown[];
+    gtag?: (...args: unknown[]) => void;
+  }
+}
+
+function readAnalyticsConsent(): AnalyticsConsent {
+  const consent = document.cookie.split('; ').find((value) => value.startsWith(`${CONSENT_COOKIE}=`))?.split('=')[1];
+  return consent === 'analytics' || consent === 'essential' ? consent : null;
+}
+
+function writeAnalyticsConsent(consent: Exclude<AnalyticsConsent, null>) {
+  const sharedDomain = window.location.hostname.endsWith('makemoneyordie.com') ? '; Domain=.makemoneyordie.com' : '';
+  const secure = window.location.protocol === 'https:' ? '; Secure' : '';
+  document.cookie = `${CONSENT_COOKIE}=${consent}; Max-Age=${CONSENT_MAX_AGE}; Path=/${sharedDomain}; SameSite=Lax${secure}`;
+}
+
+function removeAnalyticsCookies() {
+  const analyticsCookies = document.cookie.split(';').map((cookie) => cookie.trim().split('=')[0])
+    .filter((name) => /^_ga(?:_|$)/.test(name) || /^_gid$/.test(name) || /^_gat/.test(name));
+  const domains = ['', '; Domain=.makemoneyordie.com'];
+  analyticsCookies.forEach((name) => domains.forEach((domain) => {
+    document.cookie = `${name}=; Max-Age=0; Path=/${domain}; SameSite=Lax; Secure`;
+  }));
+}
+
+function setGoogleAnalyticsConsent(granted: boolean) {
+  if (!window.gtag) {
+    if (!granted) return;
+    window.dataLayer = window.dataLayer || [];
+    window.gtag = (...args: unknown[]) => window.dataLayer?.push(args);
+    window.gtag('consent', 'default', {
+      analytics_storage: 'denied',
+      ad_storage: 'denied',
+      ad_user_data: 'denied',
+      ad_personalization: 'denied',
+    });
+    window.gtag('consent', 'update', {
+      analytics_storage: 'granted',
+      ad_storage: 'denied',
+      ad_user_data: 'denied',
+      ad_personalization: 'denied',
+    });
+    window.gtag('js', new Date());
+    window.gtag('config', GOOGLE_ANALYTICS_ID);
+    const script = document.createElement('script');
+    script.async = true;
+    script.src = `https://www.googletagmanager.com/gtag/js?id=${GOOGLE_ANALYTICS_ID}`;
+    document.head.appendChild(script);
+    return;
+  }
+
+  window.gtag('consent', 'update', {
+    analytics_storage: granted ? 'granted' : 'denied',
+    ad_storage: 'denied',
+    ad_user_data: 'denied',
+    ad_personalization: 'denied',
+  });
+  if (!granted) removeAnalyticsCookies();
+}
 
 const policyTitles: Record<PolicyKind, string> = {
   terms: 'Terms of Use',
@@ -965,7 +1043,12 @@ const policyTitles: Record<PolicyKind, string> = {
   cookies: 'Cookie Policy',
 };
 
-function PolicyDialog({ policy, onClose }: { policy: PolicyKind | null; onClose: () => void }) {
+function PolicyDialog({ policy, onClose, onSetAnalyticsConsent, analyticsConsent }: {
+  policy: PolicyKind | null;
+  onClose: () => void;
+  onSetAnalyticsConsent: (granted: boolean) => void;
+  analyticsConsent: AnalyticsConsent;
+}) {
   const dialogRef = useRef<HTMLDialogElement | null>(null);
   const [email, setEmail] = useState('');
   const [message, setMessage] = useState('');
@@ -1001,14 +1084,24 @@ function PolicyDialog({ policy, onClose }: { policy: PolicyKind | null; onClose:
         </header>
         <div className="policy-dialog-body">
           {policy === 'terms' && <>
-            <section><h3>About this site</h3><p>MakeMoneyOrDie publishes articles about money, online work, and business. You may browse the site and share links to its articles for personal use.</p></section>
-            <section><h3>Editorial information</h3><p>Articles are for general information and education. They are not personal financial, investment, tax, or legal advice, and they do not promise any particular result. Check important decisions with a qualified professional where appropriate.</p></section>
-            <section><h3>Use of content</h3><p>Please do not republish complete articles or use the site in a way that disrupts access for others. We may update articles and these terms as the site changes.</p></section>
+            <p className="policy-updated">Effective date: 5 October 2026</p>
+            <section><h3>1. About these terms</h3><p>These Terms of Use govern your access to makemoneyordie.com and its articles, newsletter features, and related services (the “Site”). By using the Site, you agree to these terms. If you do not agree, please discontinue use. “We”, “us”, and “our” refer to the operator of the Site.</p></section>
+            <section><h3>2. Educational content, not professional advice</h3><p>The Site publishes general educational and editorial material about money, business, online work, and related topics. It is not financial, investment, tax, accounting, legal, or other professional advice, and it is not tailored to your circumstances. You are responsible for evaluating information and decisions. Seek advice from a suitably qualified professional before acting where appropriate. We make no promise of income, profit, or any particular result.</p></section>
+            <section><h3>3. Content and intellectual property</h3><p>Unless otherwise stated, Site text, design, branding, and other materials are owned by or licensed to the Site operator and are protected by applicable intellectual-property laws. You may access the Site and share links for personal, non-commercial use. You may not republish substantial content, sell or commercially exploit it, or remove attribution without prior written permission, except where applicable law permits.</p></section>
+            <section><h3>4. Acceptable use</h3><p>You must not use the Site unlawfully, attempt to gain unauthorised access, interfere with its operation, introduce malicious code, or use automated means in a way that places an unreasonable burden on the service. We may restrict access where reasonably necessary to protect the Site, users, or our legal rights.</p></section>
+            <section><h3>5. Third-party services and links</h3><p>The Site may link to third-party websites or services. We do not control their content, availability, or privacy practices and are not responsible for them. Your use of those services is governed by their own terms and policies. Any commercial, sponsored, or affiliate relationship will be identified where required by law.</p></section>
+            <section><h3>6. Availability and liability</h3><p>We aim to keep the Site available and information current, but do not guarantee uninterrupted access, completeness, or accuracy. To the extent permitted by law, the Site is provided without warranties not expressly stated here. Nothing in these terms excludes or limits liability that cannot lawfully be excluded or limited, including liability for fraud, wilful misconduct, or rights you have as a consumer under mandatory law.</p></section>
+            <section><h3>7. Changes and governing law</h3><p>We may revise these terms by publishing an updated version on the Site. Changes apply from the stated effective date. These terms are governed by the law applicable to the Site operator, without limiting any mandatory consumer protections available to you in your country of residence.</p></section>
           </>}
           {policy === 'privacy' && <>
-            <section><h3>Newsletter data</h3><p>When you subscribe, we store the email address you enter and the time of subscription in our database. We use this information to manage the newsletter. Subscriber email addresses are not sent to the article-generation service.</p></section>
-            <section><h3>Account and session data</h3><p>Administrators sign in with an account. The site stores account details and a temporary authentication session so they can manage articles and settings securely.</p></section>
-            <section><h3>Your choices</h3><p>You can remove your email address from the subscriber list below. If you subscribed again later, a new record will be created.</p></section>
+            <p className="policy-updated">Effective date: 5 October 2026</p>
+            <section><h3>1. Who is responsible for your data</h3><p>The data controller is <strong>[INSERT THE OPERATOR’S FULL LEGAL NAME]</strong>, operating the MakeMoneyOrDie website. Registered or business address: <strong>[INSERT POSTAL ADDRESS AND COUNTRY]</strong>. Privacy contact: <strong>[INSERT PRIVACY CONTACT EMAIL]</strong>. These operator details must be completed before this policy is published.</p></section>
+            <section><h3>2. Data we collect and why</h3><p><strong>Newsletter:</strong> your email address and subscription date, to manage your subscription and send the newsletter. The legal basis is your consent, which you may withdraw at any time.</p><p><strong>Administrator accounts:</strong> account identifiers, authentication and refresh-session data, and security events, to operate and secure the publishing dashboard. The legal basis is our legitimate interest in administering and protecting the Site.</p><p><strong>Server and security data:</strong> technical request information such as IP address, browser details, and timestamps may be recorded by the hosting or reverse-proxy infrastructure to deliver the Site, diagnose faults, and protect it against abuse. The legal basis is our legitimate interest in maintaining a secure and reliable service.</p><p><strong>Analytics:</strong> if you consent, Google Analytics 4 may process online identifiers, device/browser information, and information about how you use the Site, to measure and improve its performance. The legal basis is your consent. Analytics is not loaded before you opt in.</p></section>
+            <section><h3>3. Newsletter choices</h3><p>You can unsubscribe at any time using the form below. We will remove your address from the active subscriber list. The Site stores subscriber addresses in its database; it does not send them to OpenRouter for article generation. Do not include personal or confidential information in article-generation prompts.</p></section>
+            <section><h3>4. Service providers and international transfers</h3><p>We use hosting and database providers to operate the Site. If you allow analytics, Google Analytics is provided by Google. Google may process data under its own terms and may process it outside the European Economic Area. Where required, transfers rely on an applicable adequacy decision or appropriate safeguards. Review Google’s <a href="https://policies.google.com/privacy" target="_blank" rel="noreferrer">Privacy Policy</a> and the safeguards applicable to the service. The controller should identify its hosting provider and document the relevant data-processing and transfer arrangements.</p></section>
+            <section><h3>5. Retention</h3><p>Newsletter data is kept while your subscription is active and deleted from the active subscriber list after you unsubscribe, subject to any limited retention required by law. Administrator and security records are retained only as needed to manage accounts, maintain security, and meet legal obligations. Google Analytics retention is controlled in the Analytics property settings; the operator should set and periodically review an appropriate retention period.</p></section>
+            <section><h3>6. Your rights</h3><p>Subject to applicable law, you may request access to, correction or deletion of your personal data, restriction of processing, or a portable copy. Where processing relies on consent, you may withdraw it at any time; withdrawal does not affect processing already carried out lawfully. You may object to processing based on legitimate interests. You also have the right to lodge a complaint with the data-protection supervisory authority in your place of residence, place of work, or the place of an alleged infringement.</p><p>To exercise your rights, contact the controller using the privacy contact details above. You may withdraw newsletter consent using the form below and change analytics consent through Cookie Settings.</p></section>
+            <section><h3>7. Security and updates</h3><p>We use appropriate technical and organisational measures designed to protect personal data. No online service can guarantee absolute security. We may update this notice when our practices or legal requirements change; the effective date above will be revised.</p></section>
             <form className="policy-unsubscribe" onSubmit={submitUnsubscribe}>
               <label htmlFor="unsubscribe-email">Unsubscribe from the newsletter</label>
               <div><input id="unsubscribe-email" type="email" autoComplete="email" placeholder="Enter your email" value={email} onChange={(event) => setEmail(event.target.value)} required disabled={busy} /><button type="submit" disabled={busy}>{busy ? 'Removing...' : 'Unsubscribe'}</button></div>
@@ -1016,12 +1109,31 @@ function PolicyDialog({ policy, onClose }: { policy: PolicyKind | null; onClose:
             </form>
           </>}
           {policy === 'cookies' && <>
-            <section><h3>Essential admin cookie</h3><p>After an administrator signs in, the site uses an HTTP-only refresh cookie to keep that account signed in. It is used for authentication, lasts for up to 30 days, and is removed on sign-out. In production, it is sent only over HTTPS.</p></section>
-            <section><h3>Other cookies</h3><p>The public site does not currently set advertising or analytics cookies. You can clear cookies in your browser settings; doing so may sign an administrator out.</p></section>
+            <p className="policy-updated">Effective date: 5 October 2026</p>
+            <section><h3>How we use cookies</h3><p>Cookies and similar technologies are small pieces of information stored on your device. We use a necessary preference cookie to remember your cookie choice and an authentication cookie when an administrator signs in. Google Analytics cookies are optional and are set only after you choose “Accept analytics”. You can reject analytics without losing access to the Site.</p></section>
+            <section><h3>Cookies used on this Site</h3><ul className="cookie-list"><li><strong>mmd_cookie_consent</strong> — remembers whether you accepted or rejected analytics; first-party; expires after 180 days; strictly necessary to store your privacy choice.</li><li><strong>refresh_token</strong> — keeps an administrator signed in; HTTP-only, Secure in production, SameSite=Strict, scoped to `/api/auth`; expires after up to 30 days or on sign-out; necessary for administrator authentication.</li><li><strong>_ga</strong> and <strong>_ga_*</strong> — Google Analytics 4 identifiers used to distinguish users and preserve session state; optional analytics cookies; default expiry is up to 2 years, subject to browser limits and Google Analytics settings. They are not set unless you accept analytics.</li></ul></section>
+            <section><h3>Manage or withdraw consent</h3><p>Your current choice: <strong>{analyticsConsent === 'analytics' ? 'Analytics accepted' : analyticsConsent === 'essential' ? 'Analytics rejected' : 'No choice saved'}</strong>. You can change it at any time. Rejecting analytics prevents the Google tag from loading on your next visit; if you withdraw after accepting, we update the consent state and remove accessible Google Analytics cookies.</p><div className="cookie-actions"><button type="button" className="cookie-choice-secondary" onClick={() => { onSetAnalyticsConsent(false); dialogRef.current?.close(); }}>Reject analytics</button><button type="button" className="cookie-choice-primary" onClick={() => { onSetAnalyticsConsent(true); dialogRef.current?.close(); }}>Accept analytics</button></div></section>
+            <section><h3>Third-party information</h3><p>Google describes its GA4 cookies and their default lifetimes in its <a href="https://support.google.com/analytics/answer/11397207" target="_blank" rel="noreferrer">Analytics cookie documentation</a>. You can also control cookies through your browser, but blocking necessary cookies may prevent administrator sign-in.</p></section>
           </>}
         </div>
       </div>}
     </dialog>
+  );
+}
+
+function CookieConsentBanner({ onAccept, onReject, onDetails }: { onAccept: () => void; onReject: () => void; onDetails: () => void }) {
+  return (
+    <aside className="cookie-consent-banner" aria-label="Cookie preferences" aria-live="polite">
+      <div className="cookie-consent-copy">
+        <strong>Your privacy choices</strong>
+        <p>We use necessary cookies for sign-in and to remember your choice. With your permission, Google Analytics uses optional cookies to measure site visits. Analytics stays off unless you accept.</p>
+      </div>
+      <div className="cookie-consent-actions">
+        <button className="cookie-choice-secondary" type="button" onClick={onReject}>Reject analytics</button>
+        <button className="cookie-choice-secondary" type="button" onClick={onDetails}>Cookie details</button>
+        <button className="cookie-choice-primary" type="button" onClick={onAccept}>Accept analytics</button>
+      </div>
+    </aside>
   );
 }
 
@@ -1030,10 +1142,29 @@ function Footer({ initialPolicy = null }: { initialPolicy?: PolicyKind | null })
   const [message, setMessage] = useState('');
   const [busy, setBusy] = useState(false);
   const [policy, setPolicy] = useState<PolicyKind | null>(initialPolicy);
+  const [analyticsConsent, setAnalyticsConsent] = useState<AnalyticsConsent>(null);
+  const [consentLoaded, setConsentLoaded] = useState(false);
+  const [consentPanelOpen, setConsentPanelOpen] = useState(false);
+
+  useEffect(() => {
+    const savedConsent = readAnalyticsConsent();
+    setAnalyticsConsent(savedConsent);
+    setConsentPanelOpen(savedConsent === null);
+    setConsentLoaded(true);
+    if (savedConsent === 'analytics') setGoogleAnalyticsConsent(true);
+  }, []);
 
   useEffect(() => {
     if (initialPolicy) setPolicy(initialPolicy);
   }, [initialPolicy]);
+
+  function chooseAnalyticsConsent(granted: boolean) {
+    const choice = granted ? 'analytics' : 'essential';
+    writeAnalyticsConsent(choice);
+    setAnalyticsConsent(choice);
+    setConsentPanelOpen(false);
+    setGoogleAnalyticsConsent(granted);
+  }
 
   async function submitFooterSignup(event: React.FormEvent) {
     event.preventDefault();
@@ -1075,13 +1206,21 @@ function Footer({ initialPolicy = null }: { initialPolicy?: PolicyKind | null })
             <button type="button" onClick={() => setPolicy('terms')}>Terms of Use</button>
             <button type="button" onClick={() => setPolicy('privacy')}>Privacy Policy</button>
             <button type="button" onClick={() => setPolicy('cookies')}>Cookie Policy</button>
+            <button type="button" onClick={() => setConsentPanelOpen(true)}>Cookie settings</button>
           </nav>
           <button className="back-top" type="button" aria-label="Back to top" onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}>
             <ArrowUp size={22} />
           </button>
         </div>
       </div>
-    </footer><PolicyDialog policy={policy} onClose={() => setPolicy(null)} /></>
+    </footer>
+    <PolicyDialog policy={policy} onClose={() => setPolicy(null)} onSetAnalyticsConsent={chooseAnalyticsConsent} analyticsConsent={analyticsConsent} />
+    {consentLoaded && consentPanelOpen && <CookieConsentBanner
+      onAccept={() => chooseAnalyticsConsent(true)}
+      onReject={() => chooseAnalyticsConsent(false)}
+      onDetails={() => { setConsentPanelOpen(false); setPolicy('cookies'); }}
+    />}
+    </>
   );
 }
 

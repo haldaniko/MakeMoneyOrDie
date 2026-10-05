@@ -1996,6 +1996,21 @@ body {
   gap: 16px;
 }
 
+.magazine-column .article-card {
+  animation: magazine-card-in 280ms ease-out both;
+}
+
+@keyframes magazine-card-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .magazine-column .article-card {
+    animation: none;
+  }
+}
+
 .magazine-column .card-body {
   display: flex;
   min-height: 166px;
