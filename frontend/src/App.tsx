@@ -425,7 +425,7 @@ function HomePage({ articles }: { articles: Article[] }) {
           </div>
         </section>
 
-        <div className="ad-slot">place for ads</div>
+        <section className="ad-slot" aria-label="Advertisement placement">place for ads</section>
 
         <section className="article-section">
           <div className="article-section-head">
@@ -540,7 +540,7 @@ function ArticlePage({ article, relatedArticles }: { article?: Article; relatedA
       <div className="article-content-layout">
         <div className="article-main">
           <article className="markdown" dangerouslySetInnerHTML={{ __html: article.contentHtml }} />
-          <div className="article-ad" aria-label="Advertisement">ADVERT</div>
+          <aside className="article-ad" aria-label="Advertisement">ADVERT</aside>
         </div>
         <aside className="article-sidebar">
           <ShareBar title={article.title} url={`/articles/${article.slug}`} />
@@ -997,8 +997,9 @@ function removeAnalyticsCookies() {
   const analyticsCookies = document.cookie.split(';').map((cookie) => cookie.trim().split('=')[0])
     .filter((name) => /^_ga(?:_|$)/.test(name) || /^_gid$/.test(name) || /^_gat/.test(name));
   const domains = ['', '; Domain=.makemoneyordie.com'];
+  const secure = window.location.protocol === 'https:' ? '; Secure' : '';
   analyticsCookies.forEach((name) => domains.forEach((domain) => {
-    document.cookie = `${name}=; Max-Age=0; Path=/${domain}; SameSite=Lax; Secure`;
+    document.cookie = `${name}=; Max-Age=0; Path=/${domain}; SameSite=Lax${secure}`;
   }));
 }
 
@@ -1098,7 +1099,7 @@ function PolicyDialog({ policy, onClose, onSetAnalyticsConsent, analyticsConsent
             <section><h3>1. Who is responsible for your data</h3><p>The data controller is <strong>[INSERT THE OPERATOR’S FULL LEGAL NAME]</strong>, operating the MakeMoneyOrDie website. Registered or business address: <strong>[INSERT POSTAL ADDRESS AND COUNTRY]</strong>. Privacy contact: <strong>[INSERT PRIVACY CONTACT EMAIL]</strong>. These operator details must be completed before this policy is published.</p></section>
             <section><h3>2. Data we collect and why</h3><p><strong>Newsletter:</strong> your email address and subscription date, to manage your subscription and send the newsletter. The legal basis is your consent, which you may withdraw at any time.</p><p><strong>Administrator accounts:</strong> account identifiers, authentication and refresh-session data, and security events, to operate and secure the publishing dashboard. The legal basis is our legitimate interest in administering and protecting the Site.</p><p><strong>Server and security data:</strong> technical request information such as IP address, browser details, and timestamps may be recorded by the hosting or reverse-proxy infrastructure to deliver the Site, diagnose faults, and protect it against abuse. The legal basis is our legitimate interest in maintaining a secure and reliable service.</p><p><strong>Analytics:</strong> if you consent, Google Analytics 4 may process online identifiers, device/browser information, and information about how you use the Site, to measure and improve its performance. The legal basis is your consent. Analytics is not loaded before you opt in.</p></section>
             <section><h3>3. Newsletter choices</h3><p>You can unsubscribe at any time using the form below. We will remove your address from the active subscriber list. The Site stores subscriber addresses in its database; it does not send them to OpenRouter for article generation. Do not include personal or confidential information in article-generation prompts.</p></section>
-            <section><h3>4. Service providers and international transfers</h3><p>We use hosting and database providers to operate the Site. If you allow analytics, Google Analytics is provided by Google. Google may process data under its own terms and may process it outside the European Economic Area. Where required, transfers rely on an applicable adequacy decision or appropriate safeguards. Review Google’s <a href="https://policies.google.com/privacy" target="_blank" rel="noreferrer">Privacy Policy</a> and the safeguards applicable to the service. The controller should identify its hosting provider and document the relevant data-processing and transfer arrangements.</p></section>
+            <section><h3>4. Service providers and international transfers</h3><p>We use hosting, database, and security providers to operate the Site. When an administrator uses the article-generation feature, the submitted prompt and related generation instructions are sent to OpenRouter and the selected model provider to generate content; do not include personal or confidential information in those prompts. If you allow analytics, Google Analytics is provided by Google. These providers process data under their applicable terms, and processing may take place outside the European Economic Area. Where required, international transfers rely on an applicable adequacy decision or appropriate safeguards. Read the <a href="https://policies.google.com/privacy" target="_blank" rel="noreferrer">Google Privacy Policy</a> and <a href="https://openrouter.ai/privacy" target="_blank" rel="noreferrer">OpenRouter Privacy Policy</a>. Contact the controller for information about the providers and safeguards applicable to this Site.</p></section>
             <section><h3>5. Retention</h3><p>Newsletter data is kept while your subscription is active and deleted from the active subscriber list after you unsubscribe, subject to any limited retention required by law. Administrator and security records are retained only as needed to manage accounts, maintain security, and meet legal obligations. Google Analytics retention is controlled in the Analytics property settings; the operator should set and periodically review an appropriate retention period.</p></section>
             <section><h3>6. Your rights</h3><p>Subject to applicable law, you may request access to, correction or deletion of your personal data, restriction of processing, or a portable copy. Where processing relies on consent, you may withdraw it at any time; withdrawal does not affect processing already carried out lawfully. You may object to processing based on legitimate interests. You also have the right to lodge a complaint with the data-protection supervisory authority in your place of residence, place of work, or the place of an alleged infringement.</p><p>To exercise your rights, contact the controller using the privacy contact details above. You may withdraw newsletter consent using the form below and change analytics consent through Cookie Settings.</p></section>
             <section><h3>7. Security and updates</h3><p>We use appropriate technical and organisational measures designed to protect personal data. No online service can guarantee absolute security. We may update this notice when our practices or legal requirements change; the effective date above will be revised.</p></section>
