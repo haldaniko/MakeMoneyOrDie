@@ -34,7 +34,7 @@ Copy `.env.production.example` to `.env.production`, set the database password, 
 docker compose --env-file .env.production -f docker-compose.prod.yml up --build -d --remove-orphans
 ```
 
-The frontend is exposed on port 8080, the API on port 4000. PostgreSQL stays internal. Back up the PostgreSQL and uploads volumes before upgrades. Do not use `docker compose down -v` if you want to retain data.
+The frontend is exposed on port 9005, the API on port 8018. Set `CORS_ALLOWED_ORIGINS` to the public frontend origin (including `:9005`) and `VITE_API_URL` to the public API origin (including `:8018`) when accessing the containers directly. Replace the example domain in `.env.production` with your server's hostname. PostgreSQL stays internal. Back up the PostgreSQL and uploads volumes before upgrades. Do not use `docker compose down -v` if you want to retain data.
 
 ## API
 
