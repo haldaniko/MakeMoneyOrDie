@@ -425,7 +425,7 @@ function HomePage({ articles }: { articles: Article[] }) {
           </div>
         </section>
 
-        <section className="ad-slot" aria-label="Advertisement placement">place for ads</section>
+        <section className="home-placement-placeholder" aria-label="Advertisement placeholder">place for ads</section>
 
         <section className="article-section">
           <div className="article-section-head">
@@ -540,7 +540,7 @@ function ArticlePage({ article, relatedArticles }: { article?: Article; relatedA
       <div className="article-content-layout">
         <div className="article-main">
           <article className="markdown" dangerouslySetInnerHTML={{ __html: article.contentHtml }} />
-          <aside className="article-ad" aria-label="Advertisement">ADVERT</aside>
+          <aside className="article-placement-placeholder" aria-label="Advertisement placeholder">ADVERT</aside>
         </div>
         <aside className="article-sidebar">
           <ShareBar title={article.title} url={`/articles/${article.slug}`} />

@@ -1861,7 +1861,8 @@ body {
   color: #b9c3d1;
 }
 
-.ad-slot {
+/* Static layout previews use names distinct from live advertising slots. */
+.home-placement-placeholder {
   display: grid;
   place-items: center;
   width: calc(100vw - 24px);
@@ -2729,7 +2730,7 @@ dialog.policy-dialog[open] {
     height: 360px;
   }
 
-  .ad-slot {
+  .home-placement-placeholder {
     margin: 48px 0;
   }
 }
@@ -2872,7 +2873,7 @@ dialog.policy-dialog[open] {
   letter-spacing: 0.01em;
 }
 
-.article-ad {
+.article-placement-placeholder {
   display: grid;
   place-items: center;
   min-height: 316px;
