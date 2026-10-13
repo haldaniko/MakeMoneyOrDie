@@ -33,3 +33,24 @@ Configure the OpenRouter key, model, prompt, request limits, timezone, and autom
 ## API
 
 Existing frontend routes remain available: `/api/posts`, `/api/posts/search`, `/api/posts/:slug`, `/api/subscribe`, `/api/auth/*`, `/api/admin/posts`, `/api/admin/media/covers`, `/api/admin/settings`, and `/api/ai/generate-article`.
+
+## Telegram publishing integration
+
+The bot API is available at `https://makemoneyordie.com/api/bot/v1/` (or the configured `SITE_URL` in local development). Every request requires `Authorization: Bearer <BOT_INTEGRATION_TOKEN>`; this is a site-specific secret and is not a Telegram token or an admin JWT.
+
+Supported endpoints are `GET options/`, `POST articles/`, `GET articles/<external_id>/`, `PUT articles/<external_id>/image/`, and `POST articles/<external_id>/publish/`. Bot-created posts are stored as drafts until the publish endpoint is called. Repeating a request with the same UUID and payload is safe; changing the payload returns `409`.
+
+Required site environment variables:
+
+```text
+SITE_URL=https://makemoneyordie.com
+BOT_INTEGRATION_TOKEN=<site-specific-secret>
+```
+
+Run `python manage.py migrate` after updating the deployment. The ready-to-add bot configuration is:
+
+```json
+{"id":"makemoneyordie","name":"MakeMoneyOrDie","api_base":"https://makemoneyordie.com/api/bot/v1/","token_env":"MAKEMONEYORDIE_INTEGRATION_TOKEN"}
+```
+
+Set `MAKEMONEYORDIE_INTEGRATION_TOKEN` in the bot environment to exactly the same secret as this site's `BOT_INTEGRATION_TOKEN`.

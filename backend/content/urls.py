@@ -1,6 +1,6 @@
 from django.urls import path
 
-from . import api
+from . import api, bot_api
 from .media import serve_cover
 
 
@@ -23,4 +23,9 @@ urlpatterns = [
     path("api/admin/settings", api.AdminSettingsView.as_view()),
     path("api/ai/generate-article", api.GenerateArticleView.as_view()),
     path("uploads/covers/<str:name>", serve_cover),
+    path("api/bot/v1/options/", bot_api.BotOptionsView.as_view()),
+    path("api/bot/v1/articles/", bot_api.BotArticlesView.as_view()),
+    path("api/bot/v1/articles/<uuid:external_id>/", bot_api.BotArticleView.as_view()),
+    path("api/bot/v1/articles/<uuid:external_id>/image/", bot_api.BotArticleImageView.as_view()),
+    path("api/bot/v1/articles/<uuid:external_id>/publish/", bot_api.BotPublishView.as_view()),
 ]

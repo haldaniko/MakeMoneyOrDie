@@ -15,6 +15,7 @@ from rest_framework.exceptions import ValidationError
 
 FORMATS = {"JPEG": "jpg", "PNG": "png", "WEBP": "webp", "GIF": "gif"}
 MAX_IMAGE_BYTES = 6 * 1024 * 1024
+BOT_MAX_IMAGE_BYTES = 10 * 1024 * 1024
 
 
 def cover_directory():
@@ -65,6 +66,25 @@ def save_cover(file_name, data_url):
         raise ValidationError("Unsupported image format.")
     base_name = slugify(Path(file_name or "cover-image").stem) or "cover-image"
     name = f"{base_name}-{secrets.token_hex(8)}.{extension}"
+    path = cover_directory() / name
+    path.write_bytes(raw)
+    return asset_info(path)
+
+
+def save_bot_cover(uploaded_file):
+    """Validate by decoded image format and persist a bot upload."""
+    raw = uploaded_file.read(BOT_MAX_IMAGE_BYTES + 1)
+    if not raw or len(raw) > BOT_MAX_IMAGE_BYTES:
+        raise ValidationError("Image must be non-empty and 10 MB or smaller.")
+    try:
+        with Image.open(io.BytesIO(raw)) as image:
+            image.verify()
+            extension = {"JPEG": "jpg", "PNG": "png", "WEBP": "webp"}.get(image.format)
+    except (UnidentifiedImageError, OSError) as error:
+        raise ValidationError("Image must be a valid JPG, PNG, or WebP file.") from error
+    if not extension:
+        raise ValidationError("Only JPG, PNG, and WebP images are supported.")
+    name = f"bot-{secrets.token_hex(16)}.{extension}"
     path = cover_directory() / name
     path.write_bytes(raw)
     return asset_info(path)
