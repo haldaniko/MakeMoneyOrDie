@@ -1,6 +1,7 @@
 from django.urls import path
 
 from . import api, bot_api
+from .commerce_api import BookCheckoutView, BookDownloadView, BookOfferView, BookOrderStatusView, StripeWebhookView
 from .media import serve_cover
 
 
@@ -12,6 +13,11 @@ urlpatterns = [
     path("api/posts/<slug:slug>", api.PublicPostView.as_view()),
     path("api/subscribe", api.SubscribeView.as_view()),
     path("api/unsubscribe", api.UnsubscribeView.as_view()),
+    path("api/book", BookOfferView.as_view()),
+    path("api/book/checkout", BookCheckoutView.as_view()),
+    path("api/book/order/<str:session_id>", BookOrderStatusView.as_view()),
+    path("api/book/download/<str:token>", BookDownloadView.as_view()),
+    path("api/stripe/webhook", StripeWebhookView.as_view()),
     path("api/auth/login", api.LoginView.as_view()),
     path("api/auth/refresh", api.RefreshView.as_view()),
     path("api/auth/logout", api.LogoutView.as_view()),

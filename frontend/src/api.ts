@@ -1,6 +1,12 @@
 import type { AdminSettings, Post } from './domain';
 
-export const apiUrl = import.meta.env.VITE_API_URL || (import.meta.env.DEV ? 'http://localhost:4000' : '');
+const localDockerApiUrl = typeof window !== 'undefined'
+  && ['localhost', '127.0.0.1'].includes(window.location.hostname)
+  && window.location.port === '9005'
+  ? `${window.location.protocol}//${window.location.hostname}:8018`
+  : '';
+
+export const apiUrl = import.meta.env.VITE_API_URL || localDockerApiUrl || (import.meta.env.DEV ? 'http://localhost:4000' : '');
 export const assetUrl = (path?: string | null) => {
   if (!path) return '';
   if (/^https?:\/\//i.test(path)) return path;
@@ -10,6 +16,7 @@ export const assetUrl = (path?: string | null) => {
 async function parseData<T>(response: Response): Promise<T> {
   const body = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(body.error || 'Request failed. Please try again.');
+  if (!(body && Object.prototype.hasOwnProperty.call(body, 'data'))) throw new Error('The API returned an invalid response.');
   return body.data;
 }
 
@@ -39,6 +46,21 @@ export async function unsubscribe(email: string) {
       body: JSON.stringify({ email }),
     }),
   );
+}
+
+export type BookOffer = { title: string; price: string; currency: string };
+export type BookOrderStatus = { status: 'pending' | 'paid'; downloadUrl?: string };
+
+export async function getBookOffer(): Promise<BookOffer> {
+  return parseData<BookOffer>(await fetch(`${apiUrl}/api/book`));
+}
+
+export async function createBookCheckout(): Promise<{ checkoutUrl: string }> {
+  return parseData<{ checkoutUrl: string }>(await fetch(`${apiUrl}/api/book/checkout`, { method: 'POST' }));
+}
+
+export async function getBookOrderStatus(sessionId: string): Promise<BookOrderStatus> {
+  return parseData<BookOrderStatus>(await fetch(`${apiUrl}/api/book/order/${encodeURIComponent(sessionId)}`));
 }
 
 export async function request<T>(path: string, options: RequestInit = {}, token?: string, csrfToken?: string): Promise<T> {

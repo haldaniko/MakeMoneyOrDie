@@ -54,3 +54,15 @@ Run `python manage.py migrate` after updating the deployment. The ready-to-add b
 ```
 
 Set `MAKEMONEYORDIE_INTEGRATION_TOKEN` in the bot environment to exactly the same secret as this site's `BOT_INTEGRATION_TOKEN`.
+
+## Book checkout and delivery
+
+The home page includes a digital-book offer backed by Stripe Checkout. Copy the final PDF to `private/make-money-or-die.pdf`; this directory is mounted read-only into the backend and the PDF is ignored by Git. Configure `STRIPE_SECRET_KEY` and `STRIPE_WEBHOOK_SECRET` in `.env`, along with the optional book title, price, currency, file path, and download lifetime shown in `.env.sample`.
+
+In Stripe Workbench, create a webhook destination for:
+
+```text
+https://makemoneyordie.com/api/stripe/webhook
+```
+
+Subscribe it to `checkout.session.completed` and `checkout.session.async_payment_succeeded`, then place its signing secret in `STRIPE_WEBHOOK_SECRET`. Successful orders receive a signed, time-limited download URL; the PDF is never served from a public static directory.

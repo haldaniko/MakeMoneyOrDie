@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { CSSProperties } from 'react';
-import { ArrowUp, ChevronDown, FilePlus, Mail, Menu, Moon, RefreshCw, Save, Search, Trash2, Wand2, X } from 'lucide-react';
-import { assetUrl, getPost, getPosts, request, subscribe, unsubscribe } from './api';
+import { ArrowRight, ArrowUp, BookOpen, Check, ChevronDown, Download, FilePlus, Mail, Menu, Moon, RefreshCw, Save, Search, ShieldCheck, Trash2, Wand2, X } from 'lucide-react';
+import { assetUrl, createBookCheckout, getBookOffer, getBookOrderStatus, getPost, getPosts, request, subscribe, unsubscribe } from './api';
+import type { BookOffer } from './api';
 import type { AdminSettings, Article, Post } from './domain';
 
 const covers = ['/covers/cover1.png', '/covers/cover2.png', '/covers/cover3.png', '/covers/cover4.png'];
@@ -261,6 +262,12 @@ function Header() {
     navigate(path);
   }
 
+  function goToBook() {
+    setMenuOpen(false);
+    if (window.location.pathname !== '/') navigate('/');
+    window.setTimeout(() => document.getElementById('book')?.scrollIntoView({ behavior: 'smooth' }), 0);
+  }
+
   return (
     <header className={`site-header${menuOpen ? ' menu-open' : ''}`}>
       <div className="shell header-inner">
@@ -278,11 +285,111 @@ function Header() {
         <nav id="site-navigation" className="nav">
           <button className="icon-button" type="button" aria-label="Search" onClick={() => go('/articles')}><Search size={19} /></button>
           <button className="icon-button" type="button" aria-label="Toggle dark mode"><Moon size={18} /></button>
+          <button className="book-nav-button" type="button" onClick={goToBook}><BookOpen size={17} /> Book</button>
           <button className="pill-button" type="button" onClick={() => document.getElementById('subscribe')?.scrollIntoView({ behavior: 'smooth' })}>Subscribe</button>
         </nav>
       </div>
       {menuOpen && <button className="menu-backdrop" aria-label="Close navigation" onClick={() => setMenuOpen(false)} />}
     </header>
+  );
+}
+
+function BookOfferSection() {
+  const [offer, setOffer] = useState<BookOffer>({ title: 'Make Money or Die', price: '€19', currency: 'EUR' });
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState(() => new URLSearchParams(window.location.search).get('checkout') === 'cancelled' ? 'Checkout cancelled — nothing was charged.' : '');
+
+  useEffect(() => {
+    getBookOffer().then(setOffer).catch(() => undefined);
+  }, []);
+
+  async function buyBook() {
+    setBusy(true);
+    setMessage('');
+    try {
+      const { checkoutUrl } = await createBookCheckout();
+      window.location.assign(checkoutUrl);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'Checkout is unavailable right now.');
+      setBusy(false);
+    }
+  }
+
+  return (
+    <section id="book" className="book-offer" aria-labelledby="book-title">
+      <div className="book-visual" aria-hidden="true">
+        <div className="book-shadow" />
+        <div className="book-cover">
+          <span className="book-cover-kicker">Andrew Nickolson</span>
+          <strong>make<br />money<br /><em>or die.</em></strong>
+          <span className="book-cover-note">A field guide to leverage,<br />attention & independent income</span>
+        </div>
+      </div>
+      <div className="book-copy">
+        <p className="book-eyebrow"><BookOpen size={19} /> the book</p>
+        <h2 id="book-title">Stop collecting advice.<br />Build something that pays.</h2>
+        <p className="book-lead">A practical, unsentimental playbook for turning useful skills into offers, attention into distribution, and consistent work into financial options.</p>
+        <ul className="book-benefits">
+          <li><Check size={18} /> Find the smallest offer people will actually buy</li>
+          <li><Check size={18} /> Build a repeatable system around limited time</li>
+          <li><Check size={18} /> Use content and AI without becoming generic</li>
+        </ul>
+        <div className="book-purchase-row">
+          <div><strong>{offer.price}</strong><span>PDF · instant access</span></div>
+          <button type="button" onClick={buyBook} disabled={busy}>
+            {busy ? 'Opening secure checkout…' : 'Get the book'} <ArrowRight size={19} />
+          </button>
+        </div>
+        <p className="book-security"><ShieldCheck size={16} /> Secure payment by Stripe. Your download unlocks after payment.</p>
+        {message && <p className="book-message" role="status">{message}</p>}
+      </div>
+    </section>
+  );
+}
+
+function BookSuccessPage({ sessionId }: { sessionId: string }) {
+  const [state, setState] = useState<'checking' | 'pending' | 'paid' | 'error'>(sessionId ? 'checking' : 'error');
+  const [downloadUrl, setDownloadUrl] = useState('');
+  const [message, setMessage] = useState(sessionId ? '' : 'The checkout session is missing.');
+
+  useEffect(() => {
+    if (!sessionId) return undefined;
+    let cancelled = false;
+    let attempts = 0;
+    let timer: number | undefined;
+    const check = async () => {
+      try {
+        const order = await getBookOrderStatus(sessionId);
+        if (cancelled) return;
+        if (order.status === 'paid' && order.downloadUrl) {
+          setDownloadUrl(order.downloadUrl);
+          setState('paid');
+          return;
+        }
+        setState('pending');
+        attempts += 1;
+        if (attempts < 20) timer = window.setTimeout(check, 2000);
+        else setMessage('Payment is still processing. Refresh this page in a moment.');
+      } catch (error) {
+        if (!cancelled) {
+          setState('error');
+          setMessage(error instanceof Error ? error.message : 'We could not verify this order.');
+        }
+      }
+    };
+    check();
+    return () => { cancelled = true; if (timer) window.clearTimeout(timer); };
+  }, [sessionId]);
+
+  return (
+    <main className="book-success-page shell">
+      <div className={`book-success-mark ${state}`} aria-hidden="true">{state === 'paid' ? <Check size={32} /> : <BookOpen size={32} />}</div>
+      <p className="book-eyebrow">order confirmation</p>
+      <h1>{state === 'paid' ? 'The book is yours.' : state === 'error' ? 'We need another look.' : 'Confirming your payment…'}</h1>
+      <p>{state === 'paid' ? 'Payment confirmed. Your private download link is ready and remains valid for 24 hours.' : message || 'This usually takes only a few seconds. Keep this page open.'}</p>
+      {state === 'paid' && <a className="book-download-button" href={downloadUrl}><Download size={19} /> Download the PDF</a>}
+      <button className="book-return-link" type="button" onClick={() => navigate('/')}>Back to the journal</button>
+    </main>
   );
 }
 
@@ -425,7 +532,7 @@ function HomePage({ articles }: { articles: Article[] }) {
           </div>
         </section>
 
-        <section className="home-placement-placeholder" aria-label="Advertisement placeholder">place for ads</section>
+        <BookOfferSection />
 
         <section className="article-section">
           <div className="article-section-head">
@@ -1097,9 +1204,9 @@ function PolicyDialog({ policy, onClose, onSetAnalyticsConsent, analyticsConsent
           {policy === 'privacy' && <>
             <p className="policy-updated">Effective date: 5 October 2026</p>
             <section><h3>1. Who is responsible for your data</h3><p>The data controller is <strong>[INSERT THE OPERATOR’S FULL LEGAL NAME]</strong>, operating the MakeMoneyOrDie website. Registered or business address: <strong>[INSERT POSTAL ADDRESS AND COUNTRY]</strong>. Privacy contact: <strong>[INSERT PRIVACY CONTACT EMAIL]</strong>. These operator details must be completed before this policy is published.</p></section>
-            <section><h3>2. Data we collect and why</h3><p><strong>Newsletter:</strong> your email address and subscription date, to manage your subscription and send the newsletter. The legal basis is your consent, which you may withdraw at any time.</p><p><strong>Administrator accounts:</strong> account identifiers, authentication and refresh-session data, and security events, to operate and secure the publishing dashboard. The legal basis is our legitimate interest in administering and protecting the Site.</p><p><strong>Server and security data:</strong> technical request information such as IP address, browser details, and timestamps may be recorded by the hosting or reverse-proxy infrastructure to deliver the Site, diagnose faults, and protect it against abuse. The legal basis is our legitimate interest in maintaining a secure and reliable service.</p><p><strong>Analytics:</strong> if you consent, Google Analytics 4 may process online identifiers, device/browser information, and information about how you use the Site, to measure and improve its performance. The legal basis is your consent. Analytics is not loaded before you opt in.</p></section>
+            <section><h3>2. Data we collect and why</h3><p><strong>Newsletter:</strong> your email address and subscription date, to manage your subscription and send the newsletter. The legal basis is your consent, which you may withdraw at any time.</p><p><strong>Book purchases:</strong> your email address, Stripe Checkout and payment identifiers, order amount, currency, payment status, and timestamps, to complete the sale, provide the download, prevent fraud, and keep transaction records. Card details are entered directly into Stripe Checkout and are not stored by this Site.</p><p><strong>Administrator accounts:</strong> account identifiers, authentication and refresh-session data, and security events, to operate and secure the publishing dashboard. The legal basis is our legitimate interest in administering and protecting the Site.</p><p><strong>Server and security data:</strong> technical request information such as IP address, browser details, and timestamps may be recorded by the hosting or reverse-proxy infrastructure to deliver the Site, diagnose faults, and protect it against abuse. The legal basis is our legitimate interest in maintaining a secure and reliable service.</p><p><strong>Analytics:</strong> if you consent, Google Analytics 4 may process online identifiers, device/browser information, and information about how you use the Site, to measure and improve its performance. The legal basis is your consent. Analytics is not loaded before you opt in.</p></section>
             <section><h3>3. Newsletter choices</h3><p>You can unsubscribe at any time using the form below. We will remove your address from the active subscriber list. The Site stores subscriber addresses in its database; it does not send them to OpenRouter for article generation. Do not include personal or confidential information in article-generation prompts.</p></section>
-            <section><h3>4. Service providers and international transfers</h3><p>We use hosting, database, and security providers to operate the Site. When an administrator uses the article-generation feature, the submitted prompt and related generation instructions are sent to OpenRouter and the selected model provider to generate content; do not include personal or confidential information in those prompts. If you allow analytics, Google Analytics is provided by Google. These providers process data under their applicable terms, and processing may take place outside the European Economic Area. Where required, international transfers rely on an applicable adequacy decision or appropriate safeguards. Read the <a href="https://policies.google.com/privacy" target="_blank" rel="noreferrer">Google Privacy Policy</a> and <a href="https://openrouter.ai/privacy" target="_blank" rel="noreferrer">OpenRouter Privacy Policy</a>. Contact the controller for information about the providers and safeguards applicable to this Site.</p></section>
+            <section><h3>4. Service providers and international transfers</h3><p>We use hosting, database, and security providers to operate the Site. Stripe processes checkout and payment data for book purchases under its own terms and privacy practices. When an administrator uses the article-generation feature, the submitted prompt and related generation instructions are sent to OpenRouter and the selected model provider to generate content; do not include personal or confidential information in those prompts. If you allow analytics, Google Analytics is provided by Google. These providers process data under their applicable terms, and processing may take place outside the European Economic Area. Where required, international transfers rely on an applicable adequacy decision or appropriate safeguards. Read the <a href="https://stripe.com/privacy" target="_blank" rel="noreferrer">Stripe Privacy Policy</a>, <a href="https://policies.google.com/privacy" target="_blank" rel="noreferrer">Google Privacy Policy</a>, and <a href="https://openrouter.ai/privacy" target="_blank" rel="noreferrer">OpenRouter Privacy Policy</a>. Contact the controller for information about the providers and safeguards applicable to this Site.</p></section>
             <section><h3>5. Retention</h3><p>Newsletter data is kept while your subscription is active and deleted from the active subscriber list after you unsubscribe, subject to any limited retention required by law. Administrator and security records are retained only as needed to manage accounts, maintain security, and meet legal obligations. Google Analytics retention is controlled in the Analytics property settings; the operator should set and periodically review an appropriate retention period.</p></section>
             <section><h3>6. Your rights</h3><p>Subject to applicable law, you may request access to, correction or deletion of your personal data, restriction of processing, or a portable copy. Where processing relies on consent, you may withdraw it at any time; withdrawal does not affect processing already carried out lawfully. You may object to processing based on legitimate interests. You also have the right to lodge a complaint with the data-protection supervisory authority in your place of residence, place of work, or the place of an alleged infringement.</p><p>To exercise your rights, contact the controller using the privacy contact details above. You may withdraw newsletter consent using the form below and change analytics consent through Cookie Settings.</p></section>
             <section><h3>7. Security and updates</h3><p>We use appropriate technical and organisational measures designed to protect personal data. No online service can guarantee absolute security. We may update this notice when our practices or legal requirements change; the effective date above will be revised.</p></section>
@@ -1265,7 +1372,7 @@ export default function App() {
     <>
       <Header />
       {error && <div className="load-error">{error}</div>}
-      {path === '/admin' ? <AdminPanel /> : path === '/about' ? <AboutPage /> : path === '/articles' ? <ArticlesPage articles={articles} initialQuery={initialSearch} initialCategory={initialCategory} /> : slug ? <ArticlePage article={article} relatedArticles={relatedArticles} /> : <HomePage articles={articles} />}
+      {path === '/admin' ? <AdminPanel /> : path === '/book/success' ? <BookSuccessPage sessionId={searchParams.get('session_id') || ''} /> : path === '/about' ? <AboutPage /> : path === '/articles' ? <ArticlesPage articles={articles} initialQuery={initialSearch} initialCategory={initialCategory} /> : slug ? <ArticlePage article={article} relatedArticles={relatedArticles} /> : <HomePage articles={articles} />}
       {path !== '/admin' && <Footer initialPolicy={initialPolicy} />}
     </>
   );

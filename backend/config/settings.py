@@ -90,7 +90,7 @@ REST_FRAMEWORK = {
     "DEFAULT_PERMISSION_CLASSES": ["rest_framework.permissions.AllowAny"],
     "DEFAULT_RENDERER_CLASSES": ["rest_framework.renderers.JSONRenderer"],
     "EXCEPTION_HANDLER": "content.api.api_exception_handler",
-    "DEFAULT_THROTTLE_RATES": {"auth": "20/min", "newsletter": "20/hour"},
+    "DEFAULT_THROTTLE_RATES": {"auth": "20/min", "newsletter": "20/hour", "checkout": "10/min"},
 }
 
 LANGUAGE_CODE = "en-us"
@@ -102,6 +102,13 @@ STATIC_ROOT = BASE_DIR / "staticfiles"
 MEDIA_ROOT = Path(os.getenv("UPLOAD_DIR", str(BASE_DIR / "uploads")))
 SITE_URL = os.getenv("SITE_URL", "http://127.0.0.1:4000").rstrip("/")
 BOT_INTEGRATION_TOKEN = os.getenv("BOT_INTEGRATION_TOKEN", "").strip()
+STRIPE_SECRET_KEY = os.getenv("STRIPE_SECRET_KEY", "").strip()
+STRIPE_WEBHOOK_SECRET = os.getenv("STRIPE_WEBHOOK_SECRET", "").strip()
+BOOK_TITLE = os.getenv("BOOK_TITLE", "Make Money or Die").strip()
+BOOK_PRICE_CENTS = int(os.getenv("BOOK_PRICE_CENTS", "1900"))
+BOOK_CURRENCY = os.getenv("BOOK_CURRENCY", "eur").strip().lower()
+BOOK_FILE_PATH = Path(os.getenv("BOOK_FILE_PATH", str(BASE_DIR / "private" / "make-money-or-die.pdf")))
+BOOK_DOWNLOAD_MAX_AGE = int(os.getenv("BOOK_DOWNLOAD_MAX_AGE", "86400"))
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 APPEND_SLASH = False
 DATA_UPLOAD_MAX_MEMORY_SIZE = 10 * 1024 * 1024
